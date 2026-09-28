@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(psql *)",
+      "Bash(pg_dump *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pip install python-docx *)",
+      "Bash(pip install pyyaml *)",
+      "Bash(cmake *)",
+      "Bash(dot *)",
+      "Bash(soffice *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ],
+    "ask": [
+      "Bash(dropdb *)",
+      "Bash(git push *)",
+      "Edit(labs/*/out/**)",
+      "Write(labs/*/out/**)"
+    ],
+    "deny": [
+      "Read(**/.pgpass)",
+      "Read(**/*.env)"
+    ]
+  }
+}

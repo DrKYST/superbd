@@ -1,0 +1,6 @@
+; Скопировать в config.ini рядом с exe. Пароль здесь НЕ хранится.
+[database]
+host=localhost
+port=5432
+dbname=superbd
+last_login=
