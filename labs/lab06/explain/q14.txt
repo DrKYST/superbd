@@ -1,0 +1,86 @@
+Запрос 14 (итоговый с условием на данные и на группы). Действующие договоры без сеансов больше 30 дней
+Роль: op_donnet
+Где используется: счётчик «Договоры без сеансов более 30 дней» → список
+
+-- SQL
+SELECT contract_no, subscriber_name, connected_on, last_session, idle_days, total_count FROM api.q_idle_contracts(30, 10);
+
+-- Результат (первые строки)
+  contract_no  |              subscriber_name              | connected_on |         last_session          | idle_days | total_count 
+---------------+-------------------------------------------+--------------+-------------------------------+-----------+-------------
+ Д-2024-003158 | Коваленко Андрей Петрович                 | 2024-09-24   | 2025-08-21 02:53:44.407737+03 |       412 |         197
+ Д-2025-004982 | Лебедев Андрей Владимирович               | 2025-02-25   | 2025-09-18 02:44:25.416001+03 |       384 |         197
+ Д-2024-001488 | АО «Стальконструкция»                     | 2024-05-07   | 2025-10-15 01:10:09.913594+03 |       357 |         197
+ Д-2025-004565 | Алексеева Валентина Михайловна            | 2025-01-22   | 2025-10-28 19:53:25.589102+03 |       344 |         197
+ Д-2024-002821 | Отдел полиции № 22                        | 2024-08-30   | 2025-11-04 10:19:52.759862+03 |       337 |         197
+ Д-2024-004070 | Ткаченко Юрий Павлович                    | 2024-12-12   | 2025-11-26 11:36:11.652027+03 |       315 |         197
+ Д-2024-000359 | Михайлова Наталья Дмитриевна              | 2024-01-30   | 2025-12-16 20:45:35.760649+03 |       295 |         197
+ Д-2024-003912 | Кравченко Дарья Николаевна                | 2024-11-28   | 2025-12-16 21:17:21.095147+03 |       295 |         197
+ Д-2024-001484 | Общественная организация «Ветераны труда» | 2024-05-06   | 2025-12-18 09:01:09.564968+03 |       293 |         197
+ Д-2024-002122 | Коваленко Игорь Викторович                | 2024-07-02   | 2025-12-26 08:47:42.947073+03 |       285 |         197
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.009 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Rows Removed by Filter: 2
+  Buffers: shared hit=1
+
+duration: 2.643 ms  plan:
+Query Text: SELECT c.id, c.contract_no::text, s.id, s.name::text, coalesce(c.contact_phone, s.phone)::text,
+           c.connected_on, max(se.started_at),
+           current_date - coalesce(max(se.started_at)::date, c.connected_on),
+           count(*) OVER ()
+    FROM core.contract c
+    JOIN core.subscriber s    ON s.id = c.subscriber_id
+    LEFT JOIN core.session se ON se.contract_id = c.id
+    WHERE c.provider_id = ANY (v_scope) AND c.closed_on IS NULL
+      AND c.connected_on < v_border
+    GROUP BY c.id, s.id
+    HAVING coalesce(max(se.started_at), '-infinity') < v_border::timestamptz
+    ORDER BY max(se.started_at) NULLS FIRST, c.connected_on, c.contract_no
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=1945.45..1945.47 rows=10 width=143) (actual rows=10.00 loops=1)
+  Buffers: shared hit=1418
+  ->  Sort  (cost=1945.45..1947.94 rows=995 width=143) (actual rows=10.00 loops=1)
+        Sort Key: (max(se.started_at)) NULLS FIRST, c.connected_on, ((c.contract_no)::text)
+        Sort Method: top-N heapsort  Memory: 29kB
+        Buffers: shared hit=1418
+        ->  WindowAgg  (cost=1916.43..1923.95 rows=995 width=143) (actual rows=197.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 42kB
+              Buffers: shared hit=1409
+              ->  HashAggregate  (cost=1859.29..1904.05 rows=995 width=114) (actual rows=197.00 loops=1)
+                    Group Key: c.id, s.id
+                    Filter: (COALESCE(max(se.started_at), '-infinity'::timestamp with time zone) < ('2026-09-07'::date)::timestamp with time zone)
+                    Batches: 1  Memory Usage: 153kB
+                    Rows Removed by Filter: 167
+                    Buffers: shared hit=1409
+                    ->  Nested Loop Left Join  (cost=227.67..1836.91 rows=2984 width=114) (actual rows=3116.00 loops=1)
+                          Buffers: shared hit=1409
+                          ->  Hash Join  (cost=227.26..534.84 rows=358 width=106) (actual rows=364.00 loops=1)
+                                Hash Cond: (s.id = c.subscriber_id)
+                                Buffers: shared hit=316
+                                ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=66) (actual rows=8000.00 loops=1)
+                                      Buffers: shared hit=144
+                                ->  Hash  (cost=222.78..222.78 rows=358 width=44) (actual rows=364.00 loops=1)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 32kB
+                                      Buffers: shared hit=172
+                                      ->  Bitmap Heap Scan on contract c  (cost=12.34..222.78 rows=358 width=44) (actual rows=364.00 loops=1)
+                                            Recheck Cond: ((provider_id = ANY ('{1}'::integer[])) AND (connected_on < '2026-09-07'::date))
+                                            Filter: (closed_on IS NULL)
+                                            Rows Removed by Filter: 34
+                                            Heap Blocks: exact=170
+                                            Buffers: shared hit=172
+                                            ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..12.26 rows=397 width=0) (actual rows=398.00 loops=1)
+                                                  Index Cond: ((provider_id = ANY ('{1}'::integer[])) AND (connected_on < '2026-09-07'::date))
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=2
+                          ->  Index Only Scan using ix_session_contract_id_started_at on session se  (cost=0.42..3.55 rows=9 width=12) (actual rows=8.56 loops=364)
+                                Index Cond: (contract_id = c.id)
+                                Heap Fetches: 0
+                                Index Searches: 364
+                                Buffers: shared hit=1093

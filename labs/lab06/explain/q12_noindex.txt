@@ -1,0 +1,84 @@
+Запрос 12 (итоговый с условием на данные) — без использования индекса. Новые договоры по годам и типам абонентов: все провайдеры, 2024–2025 годы
+Роль: chief_main
+Где используется: «Статистика» → «Новые договоры по типам абонентов»
+
+-- SQL
+SELECT period_title, subscriber_type, contracts FROM api.report_new_contracts('2024-01-01', '2025-12-31', 'year');
+
+-- Результат (первые строки)
+ period_title |        subscriber_type         | contracts 
+--------------+--------------------------------+-----------
+ 2024         | Частное лицо                   |      3033
+ 2024         | Индивидуальный предприниматель |       198
+ 2024         | Школа                          |       162
+ 2024         | Колледж                        |        87
+ 2024         | Вуз                            |        85
+ 2024         | Предприятие                    |       350
+ 2024         | Государственное учреждение     |       122
+ 2024         | Библиотека                     |        42
+ 2024         | Больница                       |        48
+ 2024         | Интернет-кафе                  |        94
+ 2024         | Общественная организация       |        68
+ 2025         | Частное лицо                   |      3123
+ 2025         | Индивидуальный предприниматель |       202
+ 2025         | Школа                          |       213
+ 2025         | Колледж                        |        80
+ 2025         | Вуз                            |        86
+ 2025         | Предприятие                    |       321
+ 2025         | Государственное учреждение     |       147
+ 2025         | Библиотека                     |        39
+ 2025         | Больница                       |        50
+ 2025         | Интернет-кафе                  |        79
+ 2025         | Общественная организация       |        85
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.032 ms  plan:
+Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
+Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Sort  (cost=2.08..2.16 rows=31 width=4) (actual rows=31.00 loops=1)
+          Sort Key: p.id
+          Sort Method: quicksort  Memory: 25kB
+          Buffers: shared hit=1
+          ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
+                Buffers: shared hit=1
+
+duration: 5.292 ms  plan:
+Query Text: SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer, st.name::text, k.contracts
+    FROM (SELECT date_trunc(p_grain, c.connected_on::timestamp)::date AS period, s.subscriber_type_id,
+                 count(*) AS contracts
+          FROM core.contract c
+          JOIN core.subscriber s ON s.id = c.subscriber_id
+          WHERE c.provider_id = ANY (v_scope) AND c.connected_on BETWEEN p_from AND p_to
+          GROUP BY 1, s.subscriber_type_id) k
+    JOIN ref.subscriber_type st ON st.id = k.subscriber_type_id
+    ORDER BY k.period, st.id
+Sort  (cost=1328.09..1329.29 rows=479 width=82) (actual rows=22.00 loops=1)
+  Sort Key: ((date_trunc('year'::text, (c.connected_on)::timestamp without time zone))::date), st.id
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=441
+  ->  Hash Join  (cost=922.91..1306.76 rows=479 width=82) (actual rows=22.00 loops=1)
+        Hash Cond: (s.subscriber_type_id = st.id)
+        Buffers: shared hit=435
+        ->  HashAggregate  (cost=921.66..1074.10 rows=8711 width=14) (actual rows=22.00 loops=1)
+              Group Key: (date_trunc('year'::text, (c.connected_on)::timestamp without time zone))::date, s.subscriber_type_id
+              Batches: 1  Memory Usage: 289kB
+              Buffers: shared hit=348
+              ->  Hash Join  (cost=324.08..856.33 rows=8711 width=6) (actual rows=8714.00 loops=1)
+                    Hash Cond: (c.subscriber_id = s.id)
+                    Buffers: shared hit=348
+                    ->  Seq Scan on contract c  (cost=0.08..444.12 rows=8711 width=8) (actual rows=8714.00 loops=1)
+                          Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                          Rows Removed by Filter: 3288
+                          Buffers: shared hit=204
+                    ->  Hash  (cost=224.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                          Buckets: 8192  Batches: 1  Memory Usage: 377kB
+                          Buffers: shared hit=144
+                          ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                Buffers: shared hit=144
+        ->  Hash  (cost=1.11..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 9kB
+              Buffers: shared hit=1
+              ->  Seq Scan on subscriber_type st  (cost=0.00..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
+                    Buffers: shared hit=1

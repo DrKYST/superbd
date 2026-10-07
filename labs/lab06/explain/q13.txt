@@ -1,0 +1,78 @@
+Запрос 13 (итоговый с условием на группы). Общие абоненты — с договорами не меньше чем двух провайдеров
+Роль: adm_main
+Где используется: «Справочники» → «Общие абоненты»
+
+-- SQL
+SELECT name, subscriber_type, city, phone, providers, total_count FROM api.q_shared_subscribers(2, 10);
+
+-- Результат (первые строки)
+              name               |      subscriber_type       |    city    |      phone       | providers | total_count 
+---------------------------------+----------------------------+------------+------------------+-----------+-------------
+ Администрация района № 19       | Государственное учреждение | Дебальцево | +7 856 809-18-89 |         3 |         590
+ Алексеев Иван Владимирович      | Частное лицо               | Снежное    | +7 901 907-41-43 |         2 |         590
+ Алексеев Максим Михайлович      | Частное лицо               | Дебальцево | +7 949 766-97-16 |         2 |         590
+ Алексеев Юрий Игоревич          | Частное лицо               | Торез      | +7 901 361-69-25 |         2 |         590
+ Алексеева Виктория Владимировна | Частное лицо               | Макеевка   | +7 990 422-57-63 |         2 |         590
+ Алексеева Надежда Владимировна  | Частное лицо               | Макеевка   | +7 901 207-65-14 |         2 |         590
+ Алексеева Наталья Сергеевна     | Частное лицо               | Донецк     | +7 901 197-27-39 |         2 |         590
+ Андреев Алексей Олегович        | Частное лицо               | Харцызск   | +7 949 738-88-42 |         2 |         590
+ Андреев Евгений Андреевич       | Частное лицо               | Шахтёрск   | +7 990 185-10-50 |         2 |         590
+ Андреев Михаил Игоревич         | Частное лицо               | Мариуполь  | +7 949 808-51-29 |         2 |         590
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 10.027 ms  plan:
+Query Text: SELECT s.id, s.name::text, st.name::text, ci.name::text, s.address::text, s.phone::text,
+           count(DISTINCT c.provider_id), count(*) OVER ()
+    FROM core.subscriber s
+    JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
+    JOIN ref.city ci            ON ci.id = s.city_id
+    JOIN core.contract c        ON c.subscriber_id = s.id
+    GROUP BY s.id, st.id, ci.id
+    HAVING count(DISTINCT c.provider_id) >= p_min_providers
+    ORDER BY s.name, s.id
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=2018.06..2018.08 rows=10 width=231) (actual rows=10.00 loops=1)
+  Buffers: shared hit=356
+  ->  Sort  (cost=2018.06..2028.06 rows=4001 width=231) (actual rows=10.00 loops=1)
+        Sort Key: ((s.name)::text), s.id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=356
+        ->  WindowAgg  (cost=1931.51..1931.60 rows=4001 width=231) (actual rows=590.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 125kB
+              Buffers: shared hit=353
+              ->  GroupAggregate  (cost=1581.53..1881.58 rows=4001 width=159) (actual rows=590.00 loops=1)
+                    Group Key: s.id, st.id, ci.id
+                    Filter: (count(DISTINCT c.provider_id) >= 2)
+                    Rows Removed by Filter: 7012
+                    Buffers: shared hit=353
+                    ->  Sort  (cost=1581.53..1611.54 rows=12002 width=155) (actual rows=12002.00 loops=1)
+                          Sort Key: s.id, st.id, ci.id, c.provider_id
+                          Sort Method: quicksort  Memory: 2453kB
+                          Buffers: shared hit=353
+                          ->  Hash Join  (cost=326.52..768.34 rows=12002 width=155) (actual rows=12002.00 loops=1)
+                                Hash Cond: (s.city_id = ci.id)
+                                Buffers: shared hit=350
+                                ->  Hash Join  (cost=325.25..724.44 rows=12002 width=138) (actual rows=12002.00 loops=1)
+                                      Hash Cond: (s.subscriber_type_id = st.id)
+                                      Buffers: shared hit=349
+                                      ->  Hash Join  (cost=324.00..679.55 rows=12002 width=111) (actual rows=12002.00 loops=1)
+                                            Hash Cond: (c.subscriber_id = s.id)
+                                            Buffers: shared hit=348
+                                            ->  Seq Scan on contract c  (cost=0.00..324.02 rows=12002 width=8) (actual rows=12002.00 loops=1)
+                                                  Buffers: shared hit=204
+                                            ->  Hash  (cost=224.00..224.00 rows=8000 width=107) (actual rows=8000.00 loops=1)
+                                                  Buckets: 8192  Batches: 1  Memory Usage: 1171kB
+                                                  Buffers: shared hit=144
+                                                  ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=107) (actual rows=8000.00 loops=1)
+                                                        Buffers: shared hit=144
+                                      ->  Hash  (cost=1.11..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
+                                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                            Buffers: shared hit=1
+                                            ->  Seq Scan on subscriber_type st  (cost=0.00..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
+                                                  Buffers: shared hit=1
+                                ->  Hash  (cost=1.12..1.12 rows=12 width=21) (actual rows=12.00 loops=1)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                      Buffers: shared hit=1
+                                      ->  Seq Scan on city ci  (cost=0.00..1.12 rows=12 width=21) (actual rows=12.00 loops=1)
+                                            Buffers: shared hit=1

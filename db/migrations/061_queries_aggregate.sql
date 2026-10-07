@@ -4,7 +4,7 @@
 --   15а v_revenue_items          — доходные операции: подключения ∪ сеансы (UNION ALL)
 --   11  v_user_groups            — пользователи по группам, «всего / в том числе» (итоговый без условия, ROLLUP)
 --   12  report_new_contracts     — новые договоры по типам абонентов (итоговый с условием на данные)
---   13  q_shared_subscribers     — общие абоненты, сведения которых меняет администратор (итоговый с условием на группы)
+--   13  q_shared_subscribers     — абоненты не меньше N провайдеров, их сведения меняет администратор (итоговый с условием на группы)
 --   14  q_idle_contracts         — договоры без сеансов больше N дней (итоговый с условием на данные и на группы)
 --   15б report_revenue           — выручка по периодам (запрос на запросе 15а, ROLLUP — строка «Итого»)
 --   16  q_providers(p_without_staff) — провайдеры без сотрудников (подзапрос NOT IN); функция — в 060 (запрос 10)
@@ -165,12 +165,16 @@ COMMENT ON FUNCTION api.report_new_contracts(date, date, text, integer) IS
 -- ============================================================================ 13. Общие абоненты
 -- «Справочники» → «Общие абоненты» (администратор приложения). Сведения реестра абонента, которого обслуживают
 -- несколько провайдеров, меняет только администратор (D25, sec.check_subscriber_edit): оператор получает отказ и
--- обращается к нему. Список показывает именно таких абонентов. «Провайдеров не меньше двух» — условие на группу
--- договоров абонента, а не на отдельную строку: WHERE его не выразит, нужен HAVING. Условий на данные нет — как и в
--- правиле D25, учитываются и расторгнутые договоры. Договоры группируются до соединения с абонентом; какие провайдеры —
--- не раскрывается (договоры администратору недоступны), только их число.
+-- обращается к нему. Список показывает таких абонентов; порог «провайдеров не меньше N» — параметр (по умолчанию 2 —
+-- ровно правило D25; 3 и больше — абоненты, общие для многих провайдеров).
+-- Вид — итоговый с условием на группы: «провайдеров не меньше N» относится к группе договоров абонента, а не к
+-- отдельной строке, — WHERE его не выразит, нужен HAVING. Условий на данные нет — как и в правиле D25, учитываются и
+-- расторгнутые договоры. Соединение абонента со справочниками и договорами и группировка — в одном запросе
+-- (группировка по первичным ключам). Какие провайдеры — не раскрывается (договоры администратору недоступны), только их число.
 DROP FUNCTION IF EXISTS api.q_shared_subscribers(integer, integer);
+DROP FUNCTION IF EXISTS api.q_shared_subscribers(integer, integer, integer);
 CREATE OR REPLACE FUNCTION api.q_shared_subscribers(
+    p_min_providers integer DEFAULT 2,
     p_limit integer DEFAULT 20,
     p_offset integer DEFAULT 0)
 RETURNS TABLE (
@@ -182,21 +186,23 @@ SET TimeZone = 'Europe/Moscow'
 AS $$
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_admin']);
+    IF p_min_providers IS NULL OR p_min_providers < 2 THEN
+        RAISE EXCEPTION 'Общий абонент — абонент не меньше чем двух провайдеров' USING ERRCODE = 'P0001';
+    END IF;
     RETURN QUERY
     SELECT s.id, s.name::text, st.name::text, ci.name::text, s.address::text, s.phone::text,
-           k.providers, count(*) OVER ()
-    FROM (SELECT c.subscriber_id, count(DISTINCT c.provider_id) AS providers
-          FROM core.contract c
-          GROUP BY c.subscriber_id
-          HAVING count(DISTINCT c.provider_id) >= 2) k
-    JOIN core.subscriber s ON s.id = k.subscriber_id
+           count(DISTINCT c.provider_id), count(*) OVER ()
+    FROM core.subscriber s
     JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
-    JOIN ref.city ci ON ci.id = s.city_id
+    JOIN ref.city ci            ON ci.id = s.city_id
+    JOIN core.contract c        ON c.subscriber_id = s.id
+    GROUP BY s.id, st.id, ci.id
+    HAVING count(DISTINCT c.provider_id) >= p_min_providers
     ORDER BY s.name, s.id
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
-COMMENT ON FUNCTION api.q_shared_subscribers(integer, integer) IS
-    'Запрос 13 (ЛР 6). Общие абоненты — с договорами не меньше чем двух провайдеров (HAVING), их сведения меняет администратор приложения (D25)';
+COMMENT ON FUNCTION api.q_shared_subscribers(integer, integer, integer) IS
+    'Запрос 13 (ЛР 6). Общие абоненты — с договорами не меньше чем N провайдеров (HAVING, N ≥ 2), их сведения меняет администратор приложения (D25)';
 
 -- ============================================================================ 14. Договоры без сеансов
 -- Счётчик «Договоры без сеансов более 30 дней» (оператор, руководитель) открывает этот список. Последний сеанс —
@@ -400,7 +406,7 @@ REVOKE ALL ON FUNCTION sec.check_report_period(date, date, text), sec.period_tit
 REVOKE ALL ON api.v_revenue_items, api.v_user_groups FROM PUBLIC;
 REVOKE ALL ON FUNCTION
     api.report_new_contracts(date, date, text, integer),
-    api.q_shared_subscribers(integer, integer),
+    api.q_shared_subscribers(integer, integer, integer),
     api.q_idle_contracts(integer, integer, integer),
     api.report_revenue(date, date, text, integer, integer),
     api.report_provider_shares(date, date, integer, text),
@@ -418,6 +424,6 @@ GRANT EXECUTE ON FUNCTION
 TO grp_manager, grp_chief;
 GRANT EXECUTE ON FUNCTION api.report_provider_shares(date, date, integer, text) TO grp_chief;
 GRANT EXECUTE ON FUNCTION api.q_idle_contracts(integer, integer, integer) TO grp_operator, grp_manager;
-GRANT EXECUTE ON FUNCTION api.q_shared_subscribers(integer, integer) TO grp_admin;
+GRANT EXECUTE ON FUNCTION api.q_shared_subscribers(integer, integer, integer) TO grp_admin;
 
 RESET ROLE;

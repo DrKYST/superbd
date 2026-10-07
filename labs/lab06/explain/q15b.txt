@@ -1,0 +1,122 @@
+Запрос 15б (запрос на запросе по принципу итогового). Выручка по месяцам за январь–сентябрь 2026 со строкой «Итого»
+Роль: mgr_donnet
+Где используется: «Статистика» → «Выручка по периодам»; счётчик «Выручка за …»
+
+-- SQL
+SELECT period_title, new_contracts, volume_mb, connection_fees, traffic_fees, revenue FROM api.report_revenue('2026-01-01', '2026-09-30');
+
+-- Результат (первые строки)
+ period_title  | new_contracts | volume_mb  | connection_fees | traffic_fees |  revenue  
+---------------+---------------+------------+-----------------+--------------+-----------
+ Январь 2026   |            15 |  72091.858 |        11500.00 |      6938.77 |  18438.77
+ Февраль 2026  |            12 |  85126.591 |         9300.00 |      7615.73 |  16915.73
+ Март 2026     |             9 |  82195.485 |         7800.00 |      6974.51 |  14774.51
+ Апрель 2026   |            14 | 107033.649 |        11350.00 |      9031.25 |  20381.25
+ Май 2026      |             7 |  99769.890 |         4900.00 |      8489.22 |  13389.22
+ Июнь 2026     |            10 | 115281.639 |         7200.00 |     10607.56 |  17807.56
+ Июль 2026     |             7 | 106718.346 |         5950.00 |      9231.54 |  15181.54
+ Август 2026   |            16 | 122775.931 |        11200.00 |     10319.24 |  21519.24
+ Сентябрь 2026 |            13 | 207370.159 |         7300.00 |     17687.79 |  24987.79
+ Итого         |           103 | 998363.548 |        76500.00 |     86895.61 | 163395.61
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.008 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Buffers: shared hit=1
+
+duration: 0.007 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Buffers: shared hit=1
+
+duration: 12.098 ms  plan:
+Query Text: SELECT k.period, coalesce(sec.period_title(p_grain, k.period), 'Итого'),
+           k.new_contracts, k.volume_mb, k.connection_fees, k.revenue - k.connection_fees, k.revenue
+    FROM (SELECT date_trunc(p_grain, r.at)::date AS period,                            -- NULL — строка «Итого»
+                 count(*) FILTER (WHERE r.kind = 'подключение')                    AS new_contracts,
+                 coalesce(sum(r.volume_mb), 0)                                     AS volume_mb,
+                 coalesce(sum(r.amount) FILTER (WHERE r.kind = 'подключение'), 0)  AS connection_fees,
+                 coalesce(sum(r.amount), 0)                                        AS revenue
+          FROM api.v_revenue_items r
+          WHERE r.at >= p_from AND r.at < p_to + 1
+            AND (p_provider_id IS NULL OR r.provider_id = p_provider_id)
+            AND (p_subscriber_type_id IS NULL OR r.subscriber_type_id = p_subscriber_type_id)
+          GROUP BY ROLLUP (1)) k
+    ORDER BY k.period NULLS LAST
+Sort  (cost=4821.55..4822.05 rows=201 width=172) (actual rows=10.00 loops=1)
+  Sort Key: k.period
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=1723
+  ->  Subquery Scan on k  (cost=93.27..4813.86 rows=201 width=172) (actual rows=10.00 loops=1)
+        Buffers: shared hit=1720
+        ->  MixedAggregate  (cost=93.27..4763.11 rows=201 width=108) (actual rows=10.00 loops=1)
+              Hash Key: (date_trunc('month'::text, "*SELECT* 1".at))::date
+              Group Key: ()
+              Batches: 1  Memory Usage: 48kB
+              Buffers: shared hit=1661
+              ->  Result  (cost=93.27..4218.37 rows=16622 width=100) (actual rows=2065.00 loops=1)
+                    Buffers: shared hit=1661
+                    ->  Append  (cost=93.27..3969.04 rows=16622 width=104) (actual rows=2065.00 loops=1)
+                          Buffers: shared hit=1661
+                          ->  Subquery Scan on "*SELECT* 1"  (cost=93.27..470.46 rows=17 width=104) (actual rows=103.00 loops=1)
+                                Buffers: shared hit=710
+                                ->  Nested Loop  (cost=93.27..470.29 rows=17 width=114) (actual rows=103.00 loops=1)
+                                      Buffers: shared hit=710
+                                      InitPlan 1
+                                        ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                              Buffers: shared hit=325
+                                      ->  Bitmap Heap Scan on contract c  (cost=92.73..408.89 rows=17 width=12) (actual rows=103.00 loops=1)
+                                            Recheck Cond: (provider_id = ANY ((InitPlan 1).col1))
+                                            Filter: (((connected_on)::timestamp with time zone >= '2026-01-01'::date) AND ((connected_on)::timestamp with time zone < '2026-10-01'::date))
+                                            Rows Removed by Filter: 306
+                                            Heap Blocks: exact=176
+                                            Buffers: shared hit=503
+                                            ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..92.72 rows=3451 width=0) (actual rows=409.00 loops=1)
+                                                  Index Cond: (provider_id = ANY ((InitPlan 1).col1))
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=327
+                                      ->  Index Only Scan using pk_subscriber on subscriber s  (cost=0.28..3.59 rows=1 width=4) (actual rows=1.00 loops=103)
+                                            Index Cond: (id = c.subscriber_id)
+                                            Heap Fetches: 0
+                                            Index Searches: 103
+                                            Buffers: shared hit=207
+                          ->  Subquery Scan on "*SELECT* 2"  (cost=739.21..3415.47 rows=16605 width=104) (actual rows=1962.00 loops=1)
+                                Buffers: shared hit=951
+                                ->  Hash Join  (cost=739.21..3249.42 rows=16605 width=114) (actual rows=1962.00 loops=1)
+                                      Hash Cond: (c_1.subscriber_id = sb.id)
+                                      Buffers: shared hit=951
+                                      InitPlan 2
+                                        ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                              Buffers: shared hit=31
+                                      ->  Hash Join  (cost=418.67..2885.27 rows=16605 width=24) (actual rows=1962.00 loops=1)
+                                            Hash Cond: (se.contract_id = c_1.id)
+                                            Buffers: shared hit=926
+                                            ->  Index Scan using ix_session_started_at on session se  (cost=0.29..2315.25 rows=57748 width=24) (actual rows=57655.00 loops=1)
+                                                  Index Cond: ((started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date))
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=717
+                                            ->  Hash  (cost=375.24..375.24 rows=3451 width=8) (actual rows=409.00 loops=1)
+                                                  Buckets: 4096  Batches: 1  Memory Usage: 48kB
+                                                  Buffers: shared hit=209
+                                                  ->  Bitmap Heap Scan on contract c_1  (cost=93.59..375.24 rows=3451 width=8) (actual rows=409.00 loops=1)
+                                                        Recheck Cond: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Heap Blocks: exact=176
+                                                        Buffers: shared hit=209
+                                                        ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..92.72 rows=3451 width=0) (actual rows=409.00 loops=1)
+                                                              Index Cond: (provider_id = ANY ((InitPlan 2).col1))
+                                                              Index Searches: 1
+                                                              Buffers: shared hit=33
+                                      ->  Hash  (cost=220.28..220.28 rows=8000 width=4) (actual rows=8000.00 loops=1)
+                                            Buckets: 8192  Batches: 1  Memory Usage: 346kB
+                                            Buffers: shared hit=25
+                                            ->  Index Only Scan using pk_subscriber on subscriber sb  (cost=0.28..220.28 rows=8000 width=4) (actual rows=8000.00 loops=1)
+                                                  Heap Fetches: 21
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=25

@@ -49,6 +49,7 @@ SELECT count(*) AS providers_all FROM core.provider \gset
 SELECT count(*) AS e12_q3 FROM core.contract
 WHERE provider_id = :donnet_id AND connected_on BETWEEN '2026-07-01' AND '2026-09-30' \gset
 -- 13: общие абоненты (договоры не меньше чем с двумя провайдерами) — список кодов и те, что обслуживает «ДонНет»
+SELECT count(*) FILTER (WHERE n >= 3) AS e13_three FROM (SELECT count(DISTINCT provider_id) AS n FROM core.contract GROUP BY subscriber_id) x \gset
 SELECT count(*) AS e13_total, md5(string_agg(subscriber_id::text, ',' ORDER BY subscriber_id)) AS e13_md5,
        count(*) FILTER (WHERE donnet) AS e13_donnet
 FROM (SELECT subscriber_id, bool_or(provider_id = :donnet_id) AS donnet FROM core.contract
@@ -152,8 +153,13 @@ FROM (SELECT *, row_number() OVER () AS ord FROM api.v_user_groups) g \gset
 SELECT max(total_count) AS q11_users FROM api.q_users(p_limit => 1) \gset
 SELECT max(total_count) AS q13_total, md5(string_agg(id::text, ',' ORDER BY id)) AS q13_md5,
        bool_and(providers >= 2) AS q13_ge2
-FROM (SELECT * FROM api.q_shared_subscribers(200, 0) UNION ALL SELECT * FROM api.q_shared_subscribers(200, 200)
-      UNION ALL SELECT * FROM api.q_shared_subscribers(200, 400) UNION ALL SELECT * FROM api.q_shared_subscribers(200, 600)) q \gset
+FROM (SELECT * FROM api.q_shared_subscribers(p_limit => 200, p_offset => 0)
+      UNION ALL SELECT * FROM api.q_shared_subscribers(p_limit => 200, p_offset => 200)
+      UNION ALL SELECT * FROM api.q_shared_subscribers(p_limit => 200, p_offset => 400)
+      UNION ALL SELECT * FROM api.q_shared_subscribers(p_limit => 200, p_offset => 600)) q \gset
+SELECT coalesce(max(total_count), 0) AS q13_three, bool_and(providers >= 3) AS q13_three_ok
+FROM api.q_shared_subscribers(3, 200) \gset
+SELECT pg_temp.try('q13_bad', 'SELECT * FROM api.q_shared_subscribers(1)');
 SELECT max(total_count) AS q16_total, count(*) AS q16_rows FROM api.q_providers(p_without_staff => true, p_limit => 200) \gset
 SELECT max(total_count) AS q16_off FROM api.q_providers(p_limit => 1) \gset
 SELECT value AS t16_adm FROM api.home_todo() WHERE caption = 'Провайдеры без сотрудников' \gset
@@ -180,6 +186,9 @@ SELECT pg_temp.check('12.2 запрос 12 (WHERE): договоры по тип
 SELECT pg_temp.check('12.3 запрос 13 (HAVING): общие абоненты — те, у кого договоры не меньше чем с двумя провайдерами',
     :q13_total = :e13_total AND :'q13_md5' = :'e13_md5' AND :'q13_ge2' = 't' AND :e13_total > 0,
     format('%s из %s', :q13_total, :e13_total));
+SELECT pg_temp.check('12.3а запрос 13: порог — параметр: «не меньше 3 провайдеров» = эталон; порог меньше 2 — понятная ошибка',
+    :q13_three = :e13_three AND coalesce(:'q13_three_ok', 't') = 't' AND current_setting('test.q13_bad') LIKE 'P0001 Общий абонент%',
+    format('%s из %s; %s', :q13_three, :e13_three, current_setting('test.q13_bad')));
 SELECT pg_temp.check('12.4 запрос 13 = правило D25: оператору закрыты для изменения ровно общие абоненты его провайдера',
     :op_locked = :e13_donnet, format('закрыто %s, общих у «ДонНет» %s', :op_locked, :e13_donnet));
 SELECT pg_temp.check('12.5 запрос 14 (WHERE + HAVING): список = расчёт через NOT EXISTS, в списке нет свежих договоров и договоров с сеансами после границы',
