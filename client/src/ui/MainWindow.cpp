@@ -11,6 +11,7 @@
 #include <QToolButton>
 
 #include "ui/pages/ContractsPage.h"
+#include "ui/dialogs/PasswordDialogs.h"
 #include "ui/dialogs/UserDialog.h"
 #include "ui/pages/HomePage.h"
 #include "ui/pages/ListPages.h"
@@ -313,6 +314,14 @@ void MainWindow::openDialog(const QString &form)
                                           "Курсовой проект по дисциплине «Программирование систем с серверами баз данных», "
                                           "вариант Б-16.<br>Клиент: Qt %1, сервер: %2.")
                                .arg(QString::fromLatin1(qVersion()), m_me.serverVersion));
+        return;
+    }
+    if (form == QLatin1String("change_password")) {
+        // «Сменить пароль» начальной страницы (PasswordChange, forced = false); администратору БД — \password в psql.
+        if (m_me.groupName == QLatin1String("grp_dba"))
+            PasswordChangeDialog::showDbaNotice(this);
+        else if (PasswordChangeDialog(m_me.login, false, this).exec() == QDialog::Accepted)
+            statusBar()->showMessage(QStringLiteral("Пароль изменён."), 5000);
         return;
     }
     if (form == QLatin1String("new_user")) {

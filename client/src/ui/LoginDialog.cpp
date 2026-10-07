@@ -13,6 +13,7 @@ LoginDialog::LoginDialog(const AppConfig &config, QWidget *parent)
 {
     ui->setupUi(this);
     setFixedSize(size());
+    m_baseHeight = height();
     setWindowFlag(Qt::WindowContextHelpButtonHint, false);
 
     ui->portEdit->setValidator(new QIntValidator(1, 65535, this));
@@ -37,6 +38,28 @@ AppConfig LoginDialog::config() const
     return m_config;
 }
 
+void LoginDialog::showError(const QString &serverMessage)
+{
+    // «пользователь "…" не прошёл проверку подлинности (по паролю)» / «password authentication failed …»
+    const bool badPassword = serverMessage.contains(QStringLiteral("(по паролю)"))
+                             || serverMessage.contains(QStringLiteral("password authentication failed"));
+    const QString text = badPassword
+        ? QStringLiteral("Неверный пользователь или пароль.<br>Если вам выдали временный пароль больше суток назад, "
+                         "он больше не действует — попросите администратора сбросить пароль ещё раз.")
+        : QStringLiteral("Не удалось войти.<br>%1").arg(serverMessage.toHtmlEscaped());
+    ui->errorLabel->setText(text);
+    if (ui->errorLabel->isHidden()) {
+        ui->errorLabel->setVisible(true);
+        setFixedSize(width(), m_baseHeight + 60);        // артборд LoginExpired: 520×420 вместо 520×360
+    }
+}
+
+void LoginDialog::hideError()
+{
+    ui->errorLabel->setVisible(false);
+    setFixedSize(width(), m_baseHeight);
+}
+
 void LoginDialog::tryLogin()
 {
     const QString user = ui->userEdit->text().trimmed();
@@ -54,12 +77,13 @@ void LoginDialog::tryLogin()
     Whoami me;
     if (!Db::open(params, user, ui->passwordEdit->text(), &error) || !Db::loadWhoami(&me, &error)) {
         Db::close();
-        QMessageBox::warning(this, windowTitle(), QStringLiteral("Не удалось войти.\n\n%1").arg(error));
+        showError(error);
         ui->passwordEdit->selectAll();
         ui->passwordEdit->setFocus();
         return;
     }
     ui->passwordEdit->clear();
+    hideError();
 
     m_config.connection = params;
     m_config.lastLogin = user;

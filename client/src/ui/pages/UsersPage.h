@@ -14,7 +14,7 @@ class QTableView;
 // «Пользователи» (Users.png): администратор приложения и администратор БД (D26).
 //   панель «Группа / Кол-во» — api.v_user_groups (запрос 11), она же отбор списка;
 //   список учётных записей — api.q_users; создание — форма «Пользователь» (api.user_create);
-//   «Запретить вход» / «Разрешить вход» — api.user_set_login.
+//   «Запретить вход» / «Разрешить вход» — api.user_set_login; «Сбросить пароль…» — api.user_reset_password (D27).
 // Какие группы видны и какими учётными записями можно управлять (can_manage), решает сервер.
 class UsersPage : public QWidget {
     Q_OBJECT
@@ -30,6 +30,7 @@ private:
     void updateButtons();
     void toggleLogin();
     void createUser();
+    void resetPassword();
 
     Whoami m_me;
     QTableView *m_groups;
@@ -37,5 +38,6 @@ private:
     DataGrid *m_users;
     QLineEdit *m_search;
     QPushButton *m_loginButton;
+    QPushButton *m_resetButton;
     QString m_group;            // отбор по группе; пусто — все пользователи
 };

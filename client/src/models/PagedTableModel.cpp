@@ -186,6 +186,10 @@ QVariant PagedTableModel::data(const QModelIndex &index, int role) const
     case Qt::DisplayRole:
         if (totals)
             return m_totalsText.value(col.field);
+        if (!col.flagField.isEmpty() && m_rows.at(index.row()).value(col.flagField).toBool()) {
+            const QString text = format(col, m_rows.at(index.row()).value(col.field));
+            return text.isEmpty() ? text : text + col.flagSuffix;
+        }
         return format(col, m_rows.at(index.row()).value(col.field));
     case Qt::TextAlignmentRole:
         if (col.kind == ColumnSpec::Bool)

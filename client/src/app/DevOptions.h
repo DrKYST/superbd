@@ -11,7 +11,9 @@
 //   --arg <ключ>=<значение> параметр отбора для открываемой формы (applyArgs), можно несколько;
 //   --card contract:<код>[:sessions] | subscriber:<код>  открыть карточку вместо главного окна;
 //   --screenshot <файл.png> сохранить снимок окна 1440×900 и завершиться;
-//   --screenshot-login <файл.png> сохранить снимок окна входа и завершиться.
+//   --screenshot-login <файл.png> сохранить снимок окна входа и завершиться;
+//   --login-error <текст>    в снимке окна входа показать ошибку сервера (LoginExpired);
+//   --card reset:<логин> | temp:<логин> | password — окна сброса пароля (D27); temp выполняет настоящий сброс.
 struct DevOptions {
     bool enabled = false;
     QString devAs;
@@ -21,6 +23,7 @@ struct DevOptions {
     QString card;
     QString screenshot;
     QString screenshotLogin;
+    QString loginError;
 
     static DevOptions parse(const QStringList &args);
 };

@@ -13,6 +13,7 @@
 #include <QVBoxLayout>
 
 #include "db/ApiCall.h"
+#include "ui/dialogs/PasswordDialogs.h"
 #include "ui/dialogs/PickerDialog.h"
 #include "ui/widgets/FormKit.h"
 
@@ -73,12 +74,13 @@ UserDialog::UserDialog(QWidget *parent)
     grid->setColumnStretch(2, 1);
     layout->addLayout(grid);
 
-    // Группа «Пароль» макета: пароль не вводится — при записи сервер выдаёт временный пароль на сутки (D27).
-    // Окно «Временный пароль» подключается после артборда макета; до него пароль не показывается.
+    // Группа «Пароль» (UserDialog.dc.html, D27): пароль не вводится — после записи сервер выдаёт временный пароль,
+    // он показывается окном «Временный пароль».
     auto *password = new QGroupBox(QStringLiteral("Пароль"), this);
     auto *passwordLayout = new QVBoxLayout(password);
-    passwordLayout->addWidget(FormKit::hint(QStringLiteral("Пароль не вводится: при записи сервер выдаёт временный пароль "
-                                                           "на сутки, при первом входе сотрудник задаёт свой."),
+    passwordLayout->addWidget(FormKit::hint(QStringLiteral("Пароль не вводится. После записи сервер выдаст временный "
+                                                           "пароль на сутки и покажет его один раз; при первом входе "
+                                                           "сотрудник задаст свой."),
                                             password, true));
     layout->addSpacing(4);
     layout->addWidget(password);
@@ -89,7 +91,8 @@ UserDialog::UserDialog(QWidget *parent)
     layout->addWidget(m_canLogin);
     layout->addSpacing(4);
     layout->addWidget(FormKit::hint(QStringLiteral("При записи создаётся роль PostgreSQL с правом входа и включается в "
-                                                   "выбранную группу; пароль хранится только в СУБД."),
+                                                   "выбранную группу; пароль хранится только в СУБД. Администраторов "
+                                                   "приложения создаёт администратор БД (D26)."),
                                     this, true));
     layout->addStretch(1);
 
@@ -129,11 +132,15 @@ bool UserDialog::save()
                                  {QStringLiteral("p_group"), m_group->currentData()},
                                  {QStringLiteral("p_provider_id"), m_providerId},
                                  {QStringLiteral("p_can_login"), m_canLogin->isChecked()}};
-    if (!ApiCall::select(QStringLiteral("user_create"), params, &q, &error)) {
-        FormKit::error(this, error);
+    if (!ApiCall::select(QStringLiteral("user_create"), params, &q, &error) || !q.next()) {
+        FormKit::error(this, error.isEmpty() ? QStringLiteral("Сервер не вернул временный пароль") : error);
         return false;
     }
+    QString temp = q.value(QStringLiteral("temp_password")).toString();
+    const QDateTime validUntil = q.value(QStringLiteral("valid_until")).toDateTime();
+    q = QSqlQuery();                              // результат с паролем больше не держим
     m_created = true;
+    TempPasswordDialog::showOnce(this, m_login->text().trimmed(), m_fullName->text().trimmed(), temp, validUntil);
     // Записанного пользователя эта форма не изменяет: поля закрываются, заголовок — без «(создание)».
     setWindowTitle(QStringLiteral("Пользователь — СуперБД"));
     for (QWidget *w : {static_cast<QWidget *>(m_login), static_cast<QWidget *>(m_fullName),

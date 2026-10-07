@@ -22,6 +22,7 @@ DevOptions DevOptions::parse(const QStringList &args)
         }
         else if (key == QLatin1String("--screenshot"))       o.screenshot = value;
         else if (key == QLatin1String("--screenshot-login")) o.screenshotLogin = value;
+        else if (key == QLatin1String("--login-error"))      o.loginError = value;
     }
 #else
     Q_UNUSED(args);

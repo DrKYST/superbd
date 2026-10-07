@@ -23,7 +23,8 @@ CREATE OR REPLACE FUNCTION api.q_users(
     p_offset integer DEFAULT 0)
 RETURNS TABLE (
     id integer, login text, full_name text, group_name text, group_title text, provider_name text,
-    can_login boolean, valid_until timestamptz, created_at timestamptz, can_manage boolean, total_count bigint)
+    can_login boolean, valid_until timestamptz, reset_pending boolean, created_at timestamptz, can_manage boolean,
+    total_count bigint)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET TimeZone = 'Europe/Moscow'
@@ -40,7 +41,7 @@ BEGIN
            CASE WHEN p.id IS NULL THEN NULL
                 WHEN ot.name = upper(ot.name) THEN ot.name || ' «' || p.name || '»'
                 ELSE '«' || p.name || '»' END,
-           r.rolcanlogin, r.rolvaliduntil, u.created_at,
+           r.rolcanlogin, r.rolvaliduntil, u.reset_pending, u.created_at,
            g.grp = ANY (v_manage) AND u.login <> session_user,
            count(*) OVER ()
     FROM sec.app_user u
@@ -56,7 +57,7 @@ BEGIN
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
 COMMENT ON FUNCTION api.q_users(text, text, integer, integer) IS
-    'Пользователи системы видимых групп: логин, ФИО, группа, провайдер, вход разрешён, срок пароля, дата регистрации, можно ли управлять (D26)';
+    'Пользователи системы видимых групп: логин, ФИО, группа, провайдер, вход разрешён, срок пароля и временный ли он (D27), дата регистрации, можно ли управлять (D26)';
 
 -- Группы, учётные записи которых создаёт текущий пользователь, — список «Группа» формы «Пользователь».
 CREATE OR REPLACE VIEW api.v_manageable_groups AS
@@ -77,7 +78,7 @@ CREATE OR REPLACE FUNCTION api.user_create(
     p_group text,
     p_provider_id integer DEFAULT NULL,
     p_can_login boolean DEFAULT true)
-RETURNS TABLE (id integer, temp_password text)
+RETURNS TABLE (id integer, temp_password text, valid_until timestamptz)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
@@ -85,6 +86,7 @@ DECLARE
     v_group text := sec.current_group();
     v_login text := btrim(p_login);
     v_id integer;
+    v_password text;
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_admin', 'grp_dba']);
     IF p_group IS NULL OR NOT p_group = ANY (sec.manageable_groups(v_group)) THEN
@@ -123,7 +125,8 @@ BEGIN
     IF NOT coalesce(p_can_login, true) THEN
         EXECUTE format('ALTER ROLE %I NOLOGIN', v_login);
     END IF;
-    RETURN QUERY SELECT v_id, sec.issue_temp_password(v_login);
+    v_password := sec.issue_temp_password(v_login);
+    RETURN QUERY SELECT v_id, v_password, r.rolvaliduntil FROM pg_catalog.pg_roles r WHERE r.rolname = v_login;
 EXCEPTION WHEN foreign_key_violation THEN
     RAISE EXCEPTION 'Провайдер не найден' USING ERRCODE = '22023';
 END $$;

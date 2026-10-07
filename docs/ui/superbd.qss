@@ -101,3 +101,10 @@ QFrame#legendFrame QLabel { font-size: 9pt; color: #333333; }
 
 /* Панель групп «Пользователей» (Users.dc.html) */
 QTableView#groupPanel { border: 1px solid #b8b8b8; }
+
+/* Сброс пароля (D27): ResetConfirm, TempPassword, PasswordChange, LoginExpired */
+QLabel[role="warn"] { border: 1px solid #e0c255; background: #fff8dc; padding: 8px 10px; color: #4d4d4d; }
+QLabel[role="err"] { border: 1px solid #d9a3a3; background: #fdf0f0; padding: 8px 10px; color: #9e2424; }
+QLabel[role="bad"] { color: #b02a2a; }
+QLabel#tempPassword { font-family: Consolas, "Courier New", monospace; font-size: 18pt; padding: 6px 14px;
+  border: 1px solid #a6a6a6; background: #f7f7f7; color: #222222; }

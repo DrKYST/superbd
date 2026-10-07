@@ -16,9 +16,15 @@ public:
 
     AppConfig config() const;
 
+    // Ошибка входа красным блоком под паролем (LoginExpired.dc.html). При отказе в проверке пароля — подсказка про
+    // истёкший временный пароль (D27): сервер не сообщает, что пароль просрочен, ответ тот же, что на неверный пароль.
+    void showError(const QString &serverMessage);
+
 private:
     void tryLogin();
+    void hideError();
 
     Ui::LoginDialog *ui;
     AppConfig m_config;
+    int m_baseHeight = 0;
 };

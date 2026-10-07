@@ -50,6 +50,14 @@
     </layout>
    </item>
    <item>
+    <widget class="QLabel" name="errorLabel">
+     <property name="visible"><bool>false</bool></property>
+     <property name="wordWrap"><bool>true</bool></property>
+     <property name="textFormat"><enum>Qt::RichText</enum></property>
+     <property name="role" stdset="0"><string>err</string></property>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="connectionGroup">
      <property name="title"><string>Параметры подключения</string></property>
      <layout class="QGridLayout" name="connectionLayout">

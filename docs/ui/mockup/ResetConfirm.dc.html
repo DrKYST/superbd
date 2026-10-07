@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Сброс пароля</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#333333;font-size:13px}
+a{color:#1a5ba6;text-decoration:none}a:hover{color:#10407a;text-decoration:underline}
+.win{width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden;font-size:13px;border:1px solid #8c8c8c;box-sizing:border-box}
+.cap{height:30px;flex-shrink:0;background:#ffffff;border-bottom:1px solid #d4d4d4;display:flex;align-items:center;gap:8px;padding-left:10px;font-size:12.5px}
+.appico{width:16px;height:16px;background:#d9a400;border:1px solid #9c7600;color:#ffffff;font-size:10px;font-weight:bold;display:flex;align-items:center;justify-content:center}
+.wb{width:46px;height:30px;border:0;background:transparent;font:inherit;font-size:15px;color:#333333}
+.secbar{height:64px;flex-shrink:0;background:#f5f5f5;border-bottom:1px solid #c9c9c9;display:flex;align-items:stretch;padding:0 4px}
+.sec{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:112px;color:#333333;font-size:11.5px;text-align:center;line-height:1.15;text-decoration:none;border:1px solid transparent;box-sizing:border-box;padding:0 4px}
+.sec:hover{text-decoration:none;background:#ebebeb;color:#333333}
+.sec.on{background:#fcefbf;border-color:#e0c255}
+.secright{margin-left:auto;display:flex;align-items:center;gap:6px;padding-right:12px;font-size:12px;color:#4d4d4d}
+.navp{width:208px;flex-shrink:0;border-right:1px solid #d6d6d6;background:#ffffff;padding:6px 0;box-sizing:border-box}
+.navg{font-weight:bold;color:#4d4d4d;font-size:12.5px;padding:10px 12px 3px}
+.navl{display:block;padding:3px 12px 3px 20px;font-size:13px}
+.navl.on{font-weight:bold;color:#333333;background:#efefef}
+.work{flex-grow:1;display:flex;flex-direction:column;min-width:0}
+.tabs{height:27px;flex-shrink:0;background:#e9e9e9;border-bottom:1px solid #bdbdbd;display:flex;align-items:flex-end;gap:2px;padding:0 6px}
+.tab{height:22px;padding:0 10px;display:flex;align-items:center;gap:8px;font-size:12px;background:#dcdcdc;border:1px solid #bdbdbd;border-bottom:0;color:#333333;white-space:nowrap}
+.tab.on{background:#ffffff;height:25px;font-weight:bold}
+.tab .x{color:#8a8a8a;font-weight:normal}
+.form{flex-grow:1;display:flex;flex-direction:column;padding:8px 14px 10px;gap:7px;min-height:0}
+.ftitle{font-size:19px;color:#4d4d4d;margin:0;font-weight:normal}
+.ftitle small{font-size:13px;color:#8a8a8a}
+.cb{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.b{height:24px;padding:0 9px;border:1px solid #b3b3b3;border-radius:3px;background:linear-gradient(#ffffff,#e8e8e8);font:inherit;font-size:12.5px;color:#333333;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;text-decoration:none;box-sizing:border-box}
+.b:hover{text-decoration:none;color:#333333;border-color:#8c8c8c}
+.b.def{background:linear-gradient(#fff6cc,#f2cf4f);border-color:#b8900c;font-weight:bold}
+.b[disabled]{color:#9a9a9a}
+.sep{width:1px;height:20px;background:#cccccc;margin:0 3px}
+.l{color:#4d4d4d;font-size:12.5px;white-space:nowrap}
+.i{height:22px;border:1px solid #a6a6a6;border-radius:2px;padding:0 5px;font:inherit;font-size:12.5px;background:#ffffff;color:#333333;box-sizing:border-box}
+.i[readonly]{background:#f3f3f3}
+.pick{width:22px;height:22px;border:1px solid #a6a6a6;border-left:0;background:linear-gradient(#ffffff,#e8e8e8);font:inherit;font-size:11px;padding:0;color:#333333;box-sizing:border-box}
+.row{display:flex;align-items:center;gap:6px}
+.grid{border:1px solid #b8b8b8;background:#ffffff;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.g{display:table;width:100%;border-collapse:collapse;font-size:12.5px}
+.thead{display:table-header-group}
+.tbody{display:table-row-group}
+.tr{display:table-row}
+.th,.td{display:table-cell;vertical-align:middle}
+.g .th{height:23px;background:linear-gradient(#fafafa,#e6e6e6);border-right:1px solid #cccccc;border-bottom:1px solid #b8b8b8;text-align:left;font-weight:normal;color:#333333;padding:0 6px;white-space:nowrap}
+.g .td{height:22px;border-right:1px solid #e2e2e2;border-bottom:1px solid #e2e2e2;padding:0 6px;white-space:nowrap}
+.g .tr.cur .td{background:#fbe7a1}
+.g .tr.tot .td{background:#f2f2f2;font-weight:bold}
+.g .tr.grp .td{background:#f7f3e3;font-weight:bold}
+.g .r{text-align:right}
+.g .c{text-align:center}
+.gcap{height:22px;display:flex;align-items:center;gap:6px;font-weight:bold;color:#4d4d4d;font-size:12.5px;flex-shrink:0}
+.pg{height:27px;border-top:1px solid #d4d4d4;display:flex;align-items:center;gap:6px;padding:0 6px;font-size:12px;color:#444444;background:#f5f5f5;flex-shrink:0;margin-top:auto}
+.st{height:22px;flex-shrink:0;background:#efefef;border-top:1px solid #c9c9c9;display:flex;align-items:center;gap:16px;padding:0 10px;font-size:11.5px;color:#4d4d4d}
+.hint{font-size:12px;color:#666666}
+fieldset{border:1px solid #cfcfcf;margin:0;padding:6px 10px 9px}
+legend{color:#4d4d4d;font-size:12.5px;padding:0 4px}
+.okt{color:#2c7a2c}
+.bad{color:#b02a2a}
+.blk{border:1px solid #d0d0d0;background:#ffffff;display:flex;flex-direction:column}
+.blkh{height:26px;flex-shrink:0;background:linear-gradient(#fafafa,#ececec);border-bottom:1px solid #d0d0d0;padding:0 10px;font-weight:bold;color:#4d4d4d;display:flex;align-items:center;font-size:12.5px}
+.blkb{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.kbd{display:inline-block;min-width:22px;padding:0 5px;border:1px solid #b3b3b3;border-radius:3px;background:linear-gradient(#ffffff,#ececec);font-size:11.5px;text-align:center;line-height:18px}
+ul.li{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+
+.pwdbox{font-family:Consolas,'Courier New',monospace;font-size:24px;letter-spacing:4px;padding:6px 14px;border:1px solid #a6a6a6;background:#f7f7f7;color:#222222;user-select:all}
+.warn{border:1px solid #e0c255;background:#fff8dc;padding:8px 10px;font-size:12.5px;color:#4d4d4d;line-height:1.4}
+.err{border:1px solid #d9a3a3;background:#fdf0f0;padding:8px 10px;font-size:12.5px;color:#9e2424;line-height:1.4}
+.chk{font-size:12.5px;display:flex;align-items:center;gap:6px}
+</style>
+</helmet>
+<div style="width: 500px; height: 260px; display: flex; flex-direction: column; background: #ffffff; border: 1px solid #8c8c8c; box-sizing: border-box; font-size: 13px">
+<div class="cap"><span class="appico">С</span><span>Сброс пароля — СуперБД</span><span style="margin-left: auto; display: flex"><button class="wb" type="button" aria-label="Закрыть">×</button></span></div>
+<div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; flex-grow: 1">
+<h1 class="ftitle">Сбросить пароль?</h1>
+<div style="display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 5px 8px">
+<span class="l">Пользователь:</span><span><b>op_stepnoy1</b> — Ковалёва Марина Игоревна</span>
+<span class="l">Группа:</span><span>Операторы, ООО «Степной провод»</span>
+</div>
+<div class="hint" style="line-height: 1.45">Текущий пароль перестанет действовать сразу. Будет выдан временный пароль на сутки; при первом входе сотрудник задаст свой. Право входа не меняется.</div>
+<div class="row" style="justify-content: flex-end; margin-top: auto"><a class="b def" href="TempPassword.dc.html" style="justify-content: center">Сбросить пароль</a><a class="b" href="Users.dc.html" style="width: 90px; justify-content: center">Отмена</a></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 500, "height": 260}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

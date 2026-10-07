@@ -63,16 +63,18 @@ END $$;
 COMMENT ON FUNCTION sec.issue_temp_password(text) IS
     'Выдать учётной записи временный пароль на сутки и отметить «нужно сменить» (D27); пароль возвращается, в таблицах не хранится';
 
--- Сбросить пароль сотруднику управляемой группы (не себе): возвращает временный пароль — один раз.
+-- Сбросить пароль сотруднику управляемой группы (не себе): возвращает временный пароль — один раз — и срок его
+-- действия (окно «Временный пароль», строка «Действует до»).
 DROP FUNCTION IF EXISTS api.user_reset_password(text);
 CREATE OR REPLACE FUNCTION api.user_reset_password(p_login text)
-RETURNS text
+RETURNS TABLE (temp_password text, valid_until timestamptz)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
     v_group text := sec.current_group();
     v_target text := sec.group_of(p_login::name);
+    v_password text;
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_admin', 'grp_dba']);
     IF p_login = session_user THEN
@@ -82,7 +84,8 @@ BEGIN
        OR NOT EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = p_login) THEN
         RAISE EXCEPTION 'Нет прав на учётную запись «%»', p_login USING ERRCODE = '42501';
     END IF;
-    RETURN sec.issue_temp_password(p_login);
+    v_password := sec.issue_temp_password(p_login);
+    RETURN QUERY SELECT v_password, r.rolvaliduntil FROM pg_catalog.pg_roles r WHERE r.rolname = p_login;
 END $$;
 COMMENT ON FUNCTION api.user_reset_password(text) IS
     'Сброс пароля сотрудника управляемой группы (D26): временный пароль на сутки, смена при входе (D27); пароль возвращается один раз';

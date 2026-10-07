@@ -37,6 +37,7 @@ qt_add_executable(superbd WIN32
     src/ui/dialogs/ContractDialog.h src/ui/dialogs/ContractDialog.cpp
     src/ui/dialogs/SubscriberDialog.h src/ui/dialogs/SubscriberDialog.cpp
     src/ui/dialogs/UserDialog.h src/ui/dialogs/UserDialog.cpp
+    src/ui/dialogs/PasswordDialogs.h src/ui/dialogs/PasswordDialogs.cpp
     src/ui/pages/HomePage.h src/ui/pages/HomePage.cpp src/ui/pages/HomePage.ui
     src/ui/pages/PlaceholderPage.h src/ui/pages/PlaceholderPage.cpp
     src/ui/pages/SubscribersPage.h src/ui/pages/SubscribersPage.cpp

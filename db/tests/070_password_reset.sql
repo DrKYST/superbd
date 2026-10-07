@@ -38,7 +38,7 @@ FROM api.user_create('tst_poper', 'Тестов Пётр Олегович', 'grp
 SELECT pg_temp.try('r_self',  $q$SELECT api.user_reset_password('adm_main')$q$);
 SELECT pg_temp.try('r_admin', $q$SELECT api.user_reset_password('tst_padm')$q$);
 SELECT pg_temp.try('r_dba',   $q$SELECT api.user_reset_password('dba_main')$q$);
-SELECT set_config('test.pw', api.user_reset_password('tst_poper'), false);
+SELECT set_config('test.pw', temp_password, false), valid_until AS pw_until FROM api.user_reset_password('tst_poper') \gset
 RESET SESSION AUTHORIZATION;
 
 SET SESSION AUTHORIZATION dba_main;
@@ -52,7 +52,7 @@ SELECT pg_temp.check('11.1 сброс пароля оператору: 12 сим
     AND translate(current_setting('test.pw'), 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789', '') = ''
     AND current_setting('test.pw') <> current_setting('test.pw_create')
     AND (SELECT r.rolvaliduntil BETWEEN now() + interval '23 hours' AND now() + interval '25 hours'
-                AND r.rolpassword LIKE 'SCRAM-SHA-256$%'
+                AND r.rolpassword LIKE 'SCRAM-SHA-256$%' AND r.rolvaliduntil = :'pw_until'::timestamptz
          FROM pg_catalog.pg_authid r WHERE r.rolname = 'tst_poper')
     AND (SELECT u.reset_pending AND u.reset_by = 'adm_main' AND u.reset_at > now() - interval '1 minute'
          FROM sec.app_user u WHERE u.login = 'tst_poper'),

@@ -11,10 +11,14 @@
 #include "db/Db.h"
 #include "ui/LoginDialog.h"
 #include "ui/MainWindow.h"
+#include "ui/dialogs/PasswordDialogs.h"
 
 #ifdef SUPERBD_DEV_TOOLS
 #include <QTabWidget>
 
+#include <QSqlQuery>
+
+#include "db/ApiCall.h"
 #include "ui/dialogs/ContractDialog.h"
 #include "ui/dialogs/SubscriberDialog.h"
 #endif
@@ -65,6 +69,8 @@ int main(int argc, char *argv[])
         if (!dev.screenshotLogin.isEmpty()) {
             LoginDialog dialog(config);
             dialog.show();
+            if (!dev.loginError.isEmpty())
+                dialog.showError(dev.loginError);
             scheduleScreenshot(&dialog, dev.screenshotLogin, 300);
             return app.exec();
         }
@@ -86,15 +92,34 @@ int main(int argc, char *argv[])
                 Db::close();
                 continue;
             }
-            // Временный пароль (D27): сервер откажет во всём, кроме смены пароля. Форма «Смена пароля» —
-            // после артборда макета; до неё — сообщение вместо главного окна с ошибками доступа.
-            if (me.mustChangePassword) {
-                QMessageBox::information(nullptr, QStringLiteral("СуперБД"),
-                                         QStringLiteral("Вы вошли с временным паролем. Работа в программе станет доступна "
-                                                        "после смены пароля; форма «Смена пароля» ещё не подключена — "
-                                                        "обратитесь к администратору."));
+        }
+        // Временный пароль (D27): до смены пароля сервер откажет во всём, кроме whoami и смены пароля, — форма
+        // «Смена пароля» (PasswordChange, forced) открывается до главного окна; «Выйти» — выход из программы.
+        if (me.mustChangePassword) {
+            if (me.groupName == QLatin1String("grp_dba")) {
+                PasswordChangeDialog::showDbaNotice(nullptr);
                 Db::close();
-                continue;
+                return 0;
+            }
+            PasswordChangeDialog change(me.login, true);
+#ifdef SUPERBD_DEV_TOOLS
+            if (!dev.screenshot.isEmpty()) {
+                change.show();
+                scheduleScreenshot(&change, dev.screenshot, 600);
+                const int code = app.exec();
+                Db::close();
+                return code;
+            }
+#endif
+            if (change.exec() != QDialog::Accepted) {
+                Db::close();
+                return 0;
+            }
+            QString reloadError;
+            if (!Db::loadWhoami(&me, &reloadError)) {
+                QMessageBox::critical(nullptr, QStringLiteral("СуперБД"), reloadError);
+                Db::close();
+                return 1;
             }
         }
 
@@ -103,7 +128,32 @@ int main(int argc, char *argv[])
         if (!dev.card.isEmpty()) {
             const QStringList parts = dev.card.split(QLatin1Char(':'));
             QDialog *card = nullptr;
-            if (parts.value(0) == QLatin1String("contract"))
+            if (parts.value(0) == QLatin1String("reset") || parts.value(0) == QLatin1String("temp")) {
+                // строка пользователя — из api.q_users; temp — настоящий сброс пароля (только тестовая база)
+                QSqlQuery q;
+                QString err;
+                if (!ApiCall::select(QStringLiteral("q_users"), {{QStringLiteral("p_search"), parts.value(1)}}, &q, &err)
+                    || !q.next()) {
+                    QMessageBox::critical(nullptr, QStringLiteral("СуперБД"), err.isEmpty() ? parts.value(1) : err);
+                    return 1;
+                }
+                const QString login = q.value(QStringLiteral("login")).toString();
+                const QString fullName = q.value(QStringLiteral("full_name")).toString();
+                if (parts.value(0) == QLatin1String("reset")) {
+                    card = new ResetConfirmDialog(login, fullName, q.value(QStringLiteral("group_title")).toString(),
+                                                  q.value(QStringLiteral("provider_name")).toString());
+                } else {
+                    QSqlQuery r;
+                    if (!ApiCall::select(QStringLiteral("user_reset_password"), {{QStringLiteral("p_login"), login}}, &r, &err)
+                        || !r.next()) {
+                        QMessageBox::critical(nullptr, QStringLiteral("СуперБД"), err);
+                        return 1;
+                    }
+                    card = new TempPasswordDialog(login, fullName, r.value(0).toString(), r.value(1).toDateTime());
+                }
+            } else if (parts.value(0) == QLatin1String("password")) {
+                card = new PasswordChangeDialog(me.login, false);
+            } else if (parts.value(0) == QLatin1String("contract"))
                 card = new ContractDialog(parts.value(1).toInt());
             else if (parts.value(0) == QLatin1String("subscriber"))
                 card = new SubscriberDialog(parts.value(1).toInt());
