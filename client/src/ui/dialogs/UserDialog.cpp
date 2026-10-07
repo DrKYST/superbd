@@ -73,12 +73,12 @@ UserDialog::UserDialog(QWidget *parent)
     grid->setColumnStretch(2, 1);
     layout->addLayout(grid);
 
-    // Группа «Пароль» макета: пароль при создании не задаётся — его выдаёт сброс пароля (D27).
+    // Группа «Пароль» макета: пароль не вводится — при записи сервер выдаёт временный пароль на сутки (D27).
+    // Окно «Временный пароль» подключается после артборда макета; до него пароль не показывается.
     auto *password = new QGroupBox(QStringLiteral("Пароль"), this);
     auto *passwordLayout = new QVBoxLayout(password);
-    passwordLayout->addWidget(FormKit::hint(QStringLiteral("Пароль при создании не задаётся: войти можно будет после "
-                                                           "выдачи временного пароля («Сменить пароль…» в списке "
-                                                           "пользователей)."),
+    passwordLayout->addWidget(FormKit::hint(QStringLiteral("Пароль не вводится: при записи сервер выдаёт временный пароль "
+                                                           "на сутки, при первом входе сотрудник задаёт свой."),
                                             password, true));
     layout->addSpacing(4);
     layout->addWidget(password);

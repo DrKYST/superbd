@@ -263,6 +263,9 @@ IP-адрес остаётся в договоре, а не переноситс
 | | ФИО | `full_name` | `d_name` | NOT NULL | |
 | | Провайдер | `provider_id` | integer | NULL | FK → E5 |
 | | Дата регистрации | `created_at` | timestamptz | NOT NULL | |
+| | Выдан временный пароль | `reset_pending` | boolean | NOT NULL | |
+| | Когда выдан временный пароль | `reset_at` | timestamptz | NULL | |
+| | Кто выдал временный пароль | `reset_by` | `d_login` | NULL | |
 | Журнал изменений | Идентификатор | `id` | bigint | NOT NULL | PK |
 | | Дата и время изменения | `changed_at` | timestamptz | NOT NULL | |
 | | Пользователь БД | `db_user` | varchar(63) | NOT NULL | |
@@ -379,6 +382,9 @@ IP-адрес остаётся в договоре, а не переноситс
 | `full_name` | `d_name` | NOT NULL | | |
 | `provider_id` | integer | NULL | FK | `core.provider`, RESTRICT; обязателен для операторов и руководителей провайдера, пуст для администратора и главного аналитика |
 | `created_at` | timestamptz | NOT NULL | | текущие дата и время |
+| `reset_pending` | boolean | NOT NULL | | false; true — выдан временный пароль, до смены работа недоступна (D27) |
+| `reset_at` | timestamptz | NULL | | когда выдан временный пароль |
+| `reset_by` | `d_login` | NULL | | логин администратора, выдавшего временный пароль; самого пароля в таблице нет |
 
 Таблица: Служебная таблица audit.change_log {#tab:dl-change-log}
 

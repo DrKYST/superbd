@@ -24,6 +24,7 @@ DROP SCHEMA IF EXISTS api, audit, sec, core, ref CASCADE;
 \ir migrations/065_api_lookups.sql
 \ir migrations/066_api_subscriber_write.sql
 \ir migrations/070_api_admin.sql
+\ir migrations/075_password_reset.sql
 
 \echo '  данные'
 \ir seed/010_ref.sql

@@ -140,6 +140,10 @@ CREATE TABLE IF NOT EXISTS sec.app_user (
     login       ref.d_login NOT NULL,
     full_name   ref.d_name  NOT NULL,
     created_at  timestamptz NOT NULL DEFAULT now(),
+    -- Сброс пароля (D27): отметка «выдан временный пароль» и кто/когда его выдал. Сам пароль — только в pg_authid.
+    reset_pending boolean   NOT NULL DEFAULT false,
+    reset_at    timestamptz,
+    reset_by    ref.d_login,
     CONSTRAINT pk_app_user PRIMARY KEY (id),
     CONSTRAINT uq_app_user_login UNIQUE (login),
     CONSTRAINT fk_app_user_provider_id FOREIGN KEY (provider_id)
@@ -151,6 +155,9 @@ COMMENT ON COLUMN sec.app_user.provider_id IS 'Код провайдера';
 COMMENT ON COLUMN sec.app_user.login       IS 'Логин';
 COMMENT ON COLUMN sec.app_user.full_name   IS 'ФИО';
 COMMENT ON COLUMN sec.app_user.created_at  IS 'Дата регистрации';
+COMMENT ON COLUMN sec.app_user.reset_pending IS 'Выдан временный пароль';      -- до его смены работа недоступна (D27)
+COMMENT ON COLUMN sec.app_user.reset_at    IS 'Когда выдан временный пароль';
+COMMENT ON COLUMN sec.app_user.reset_by    IS 'Кто выдал временный пароль';  -- логин администратора
 
 -- Журнал изменений (D10): без внешних ключей — записи сохраняются после удаления строк.
 CREATE TABLE IF NOT EXISTS audit.change_log (

@@ -97,8 +97,27 @@ $$;
 COMMENT ON FUNCTION sec.current_provider_id() IS
     'Код провайдера текущего пользователя по sec.app_user (session_user); NULL, если пользователь не привязан к провайдеру';
 
--- Проверка группы — первая строка каждой функции api.
-CREATE OR REPLACE FUNCTION sec.require_group(p_groups text[])
+-- Временный пароль (D27): пока сотрудник его не сменил, программа недоступна, кроме api.whoami и
+-- api.change_own_password. Отказ — отдельным кодом SB001, чтобы клиент отличал «смените пароль» от «нет прав» (42501).
+-- SECURITY DEFINER: читает строку самого пользователя в sec.app_user, к которой у групп прав нет; вызывается
+-- и из представлений api (от имени пользователя). Возвращает true, чтобы стоять в условии представления.
+CREATE OR REPLACE FUNCTION sec.assert_password_changed()
+RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending) THEN
+        RAISE EXCEPTION 'Вам выдан временный пароль: смените его, чтобы продолжить работу'
+            USING ERRCODE = 'SB001';
+    END IF;
+    RETURN true;
+END $$;
+COMMENT ON FUNCTION sec.assert_password_changed() IS
+    'Прерывает выполнение с ошибкой SB001, пока текущий пользователь не сменил временный пароль (D27); иначе true';
+
+-- Проверка группы без проверки временного пароля — для api.whoami и api.change_own_password.
+CREATE OR REPLACE FUNCTION sec.check_group(p_groups text[])
 RETURNS void
 LANGUAGE plpgsql STABLE
 SET search_path = pg_catalog, pg_temp
@@ -114,8 +133,21 @@ BEGIN
         RAISE EXCEPTION 'Недостаточно прав для этого действия' USING ERRCODE = '42501';
     END IF;
 END $$;
+COMMENT ON FUNCTION sec.check_group(text[]) IS
+    'Прерывает выполнение с ошибкой 42501, если текущий пользователь не входит ни в одну из указанных групп (без проверки временного пароля)';
+
+-- Проверка группы и временного пароля — первая строка каждой функции api.
+CREATE OR REPLACE FUNCTION sec.require_group(p_groups text[])
+RETURNS void
+LANGUAGE plpgsql STABLE
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+    PERFORM sec.check_group(p_groups);
+    PERFORM sec.assert_password_changed();
+END $$;
 COMMENT ON FUNCTION sec.require_group(text[]) IS
-    'Прерывает выполнение с ошибкой 42501, если текущий пользователь не входит ни в одну из указанных групп';
+    'Прерывает выполнение с ошибкой 42501, если текущий пользователь не входит ни в одну из указанных групп, и с ошибкой SB001, пока не сменён временный пароль (D27)';
 
 -- Сведения о текущем пользователе для построения интерфейса клиента.
 -- DROP: при изменении состава колонок CREATE OR REPLACE не срабатывает.
@@ -133,7 +165,8 @@ RETURNS TABLE (
     admin_contact  text,
     database_name  text,
     server_version text,
-    server_time    timestamptz
+    server_time    timestamptz,
+    must_change_password boolean
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -142,7 +175,8 @@ AS $$
 DECLARE
     v_group text := sec.current_group();
 BEGIN
-    PERFORM sec.require_group(ARRAY['grp_admin', 'grp_dba', 'grp_operator', 'grp_manager', 'grp_chief']);
+    -- без проверки временного пароля: по must_change_password клиент открывает форму «Смена пароля» (D27)
+    PERFORM sec.check_group(ARRAY['grp_admin', 'grp_dba', 'grp_operator', 'grp_manager', 'grp_chief']);
     RETURN QUERY
     SELECT session_user::text,
            u.full_name::text,
@@ -181,16 +215,18 @@ BEGIN
               AND a.login <> session_user),
            current_database()::text,
            'PostgreSQL ' || split_part(current_setting('server_version'), ' ', 1),
-           now()
+           now(),
+           coalesce(u.reset_pending, false)
     FROM (SELECT 1) AS one
     LEFT JOIN sec.app_user u ON u.login = session_user
     LEFT JOIN core.provider p ON p.id = u.provider_id
     LEFT JOIN ref.ownership_type ot ON ot.id = p.ownership_type_id;
 END $$;
 COMMENT ON FUNCTION api.whoami() IS
-    'Текущий пользователь: логин, ФИО, группа и название роли, провайдер, организация, к кому обращаться по доступу (администраторы приложения; им — администраторы БД), база и версия СУБД, время сервера';
+    'Текущий пользователь: логин, ФИО, группа и название роли, провайдер, организация, к кому обращаться по доступу (администраторы приложения; им — администраторы БД), база и версия СУБД, время сервера, нужно ли сменить временный пароль (D27)';
 
 REVOKE ALL ON FUNCTION sec.manageable_groups(text), sec.visible_groups(text), sec.group_title(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION sec.assert_password_changed(), sec.check_group(text[]) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.whoami() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION api.whoami() TO grp_admin, grp_dba, grp_operator, grp_manager, grp_chief;
 

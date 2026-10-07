@@ -22,6 +22,7 @@ struct Whoami {
     QString databaseName;
     QString serverVersion;  // «PostgreSQL 18.3»
     QDateTime sessionStarted;
+    bool mustChangePassword = false;   // вход с временным паролем (D27): работа недоступна до смены пароля
     ConnectionParams connection;
 };
 

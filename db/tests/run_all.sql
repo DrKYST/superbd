@@ -25,6 +25,9 @@ SET TimeZone = 'Europe/Moscow';
 \echo '== 060 запросы ЛР 6'
 \ir 060_queries_lr6.sql
 
+\echo '== 070 сброс пароля (D27)'
+\ir 070_password_reset.sql
+
 \echo '== итог'
 DO $$
 DECLARE

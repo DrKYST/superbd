@@ -74,6 +74,7 @@ bool Db::loadWhoami(Whoami *out, QString *error)
     out->databaseName = q.value(r.indexOf(QStringLiteral("database_name"))).toString();
     out->serverVersion = q.value(r.indexOf(QStringLiteral("server_version"))).toString();
     out->sessionStarted = q.value(r.indexOf(QStringLiteral("server_time"))).toDateTime().toLocalTime();
+    out->mustChangePassword = q.value(r.indexOf(QStringLiteral("must_change_password"))).toBool();
     const QSqlDatabase db = database();
     out->connection.host = db.hostName();
     out->connection.port = db.port();

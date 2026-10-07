@@ -115,13 +115,14 @@ SELECT pg_temp.try('d_op',  $q$SELECT api.user_create('tst_uop3', 'Тестов 
 SELECT pg_temp.try('d_dba', $q$SELECT api.user_create('tst_udba', 'Тестов Иван Иванович', 'grp_dba')$q$);
 RESET SESSION AUTHORIZATION;
 
-SELECT pg_temp.check('10.9 администратор приложения создаёт оператора (с провайдером) и главного аналитика (без)',
+SELECT pg_temp.check('10.9 администратор приложения создаёт оператора (с провайдером) и главного аналитика (без); пароль — временный, хешем SCRAM',
     current_setting('test.c_op') = 'ok' AND current_setting('test.c_chief') = 'ok'
     AND sec.group_of('tst_uop') = 'grp_operator' AND sec.group_of('tst_uchief') = 'grp_chief'
     AND EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = 'tst_uop'
                 AND u.provider_id = current_setting('test.prov')::int)
     AND EXISTS (SELECT 1 FROM pg_catalog.pg_authid r WHERE r.rolname = 'tst_uop' AND r.rolcanlogin
-                AND NOT r.rolsuper AND NOT r.rolcreaterole AND r.rolpassword IS NULL),
+                AND NOT r.rolsuper AND NOT r.rolcreaterole AND r.rolpassword LIKE 'SCRAM-SHA-256$%')
+    AND (SELECT u.reset_pending FROM sec.app_user u WHERE u.login = 'tst_uop'),
     current_setting('test.c_op') || ' | ' || current_setting('test.c_chief'));
 SELECT pg_temp.check('10.10 администратор приложения не создаёт администраторов (ни приложения, ни БД)',
     current_setting('test.c_adm') LIKE '42501%' AND current_setting('test.c_dba') LIKE '42501%',

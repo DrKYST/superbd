@@ -52,7 +52,7 @@ schema audit — журнал изменений (jsonb)
 | Область | Функции | Группы |
 |---|---|---|
 | Сессия | `whoami()` | все |
-| Пользователи | `q_users`, `user_create(login, full_name, group, provider_id)`, `user_set_login(login, enabled)`; план: `user_reset_password(login)`, `change_own_password(new)` (D27), `user_update` | admin — операторы, руководители, аналитики; dba — администраторы приложения (D26) |
+| Пользователи | `q_users`, `user_create(login, full_name, group, provider_id)`, `user_set_login(login, enabled)`, `user_reset_password(login)` → временный пароль, `change_own_password(new)` (D27, миграция 075); план: `user_update` | admin — операторы, руководители, аналитики; dba — администраторы приложения (D26) |
 | База данных | `q_change_log(from, to, table, operation, db_user)`, `db_tables()`, `db_connections()` | dba |
 | Справочники | `ownership_type_*`, `city_*`, `subscriber_type_*`, `tariff_*` | admin (CRUD); остальным `*_lookup()` для выпадающих списков |
 | Провайдеры | `provider_list`, `provider_get`, `provider_create/update/delete` | admin CRUD; остальные list/get |

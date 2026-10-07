@@ -44,6 +44,7 @@ AS $$
 DECLARE
     v_own integer;
 BEGIN
+    PERFORM sec.assert_password_changed();      -- представления api не работают, пока не сменён временный пароль (D27)
     IF p_sees_all THEN
         IF p_provider_id IS NOT NULL THEN
             RETURN ARRAY[p_provider_id];
@@ -102,5 +103,7 @@ GRANT EXECUTE ON FUNCTION sec.sees_all_data(), sec.sees_all_providers(), sec.cur
                           sec.scope_data(integer), sec.scope_providers(integer)
     TO grp_admin, grp_operator, grp_manager, grp_chief;
 GRANT USAGE ON SCHEMA sec TO grp_admin, grp_operator, grp_manager, grp_chief;
+-- Проверка временного пароля (D27) — в представлениях без области видимости (v_user_groups, v_manageable_groups).
+GRANT EXECUTE ON FUNCTION sec.assert_password_changed() TO grp_admin, grp_dba;
 
 RESET ROLE;

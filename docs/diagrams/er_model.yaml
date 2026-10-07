@@ -110,6 +110,9 @@ tables:
       - [AK, login, varchar(31), Логин PostgreSQL]
       - ["", full_name, varchar(150), ФИО]
       - ["", created_at, timestamptz, Дата регистрации]
+      - ["", reset_pending, boolean, Выдан временный пароль]
+      - ["", reset_at, timestamptz, Когда выдан временный пароль]
+      - ["", reset_by, varchar(31), Кто выдал временный пароль]
 
   - name: audit.change_log
     title: Журнал изменений

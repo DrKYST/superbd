@@ -121,6 +121,7 @@ JOIN pg_catalog.pg_auth_members m ON m.member = r.oid AND m.inherit_option
 JOIN pg_catalog.pg_roles g        ON g.oid = m.roleid
 -- разграничение доступа: только группы, видимые роли (функция вызывается один раз)
 WHERE g.rolname = ANY ((SELECT sec.visible_groups(sec.current_group()))::name[])
+  AND (SELECT sec.assert_password_changed())                           -- временный пароль не сменён — отказ (D27)
 GROUP BY ROLLUP (g.rolname)
 ORDER BY ord;
 COMMENT ON VIEW api.v_user_groups IS

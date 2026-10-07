@@ -61,11 +61,13 @@ COMMENT ON FUNCTION api.q_users(text, text, integer, integer) IS
 -- Группы, учётные записи которых создаёт текущий пользователь, — список «Группа» формы «Пользователь».
 CREATE OR REPLACE VIEW api.v_manageable_groups AS
 SELECT g.grp::text AS group_name, sec.group_title(g.grp) AS title, g.ord::integer AS ord
-FROM unnest(sec.manageable_groups(sec.current_group())) WITH ORDINALITY AS g(grp, ord);
+FROM unnest(sec.manageable_groups(sec.current_group())) WITH ORDINALITY AS g(grp, ord)
+WHERE (SELECT sec.assert_password_changed());                          -- временный пароль не сменён — отказ (D27)
 COMMENT ON VIEW api.v_manageable_groups IS
     'Группы, учётные записи которых создаёт и блокирует текущий администратор (D26): список «Группа» формы «Пользователь»';
 
--- Создать пользователя управляемой группы. Пароль не задаётся (вход до сброса пароля невозможен, D27).
+-- Создать пользователя управляемой группы. Пароль сразу временный (D27, sec.issue_temp_password — 075):
+-- возвращается один раз вместе с кодом сотрудника; при первом входе сотрудник задаёт свой.
 -- p_can_login — флажок «Вход разрешён» формы: false — учётная запись создаётся с запрещённым входом (NOLOGIN).
 DROP FUNCTION IF EXISTS api.user_create(text, text, text, integer);
 DROP FUNCTION IF EXISTS api.user_create(text, text, text, integer, boolean);
@@ -75,7 +77,7 @@ CREATE OR REPLACE FUNCTION api.user_create(
     p_group text,
     p_provider_id integer DEFAULT NULL,
     p_can_login boolean DEFAULT true)
-RETURNS integer
+RETURNS TABLE (id integer, temp_password text)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
@@ -121,12 +123,12 @@ BEGIN
     IF NOT coalesce(p_can_login, true) THEN
         EXECUTE format('ALTER ROLE %I NOLOGIN', v_login);
     END IF;
-    RETURN v_id;
+    RETURN QUERY SELECT v_id, sec.issue_temp_password(v_login);
 EXCEPTION WHEN foreign_key_violation THEN
     RAISE EXCEPTION 'Провайдер не найден' USING ERRCODE = '22023';
 END $$;
 COMMENT ON FUNCTION api.user_create(text, text, text, integer, boolean) IS
-    'Новый пользователь: LOGIN-роль PostgreSQL без пароля, членство в группе, строка «Сотрудник»; только для управляемых групп (D26), пароль — сбросом пароля (D27)';
+    'Новый пользователь: LOGIN-роль PostgreSQL, членство в группе, строка «Сотрудник»; только для управляемых групп (D26); возвращает временный пароль на сутки — сменить при первом входе (D27)';
 
 -- Разрешить или запретить вход пользователю управляемой группы (не себе).
 DROP FUNCTION IF EXISTS api.user_set_login(text, boolean);
@@ -250,6 +252,7 @@ GRANT EXECUTE ON FUNCTION api.q_change_log(date, date, text, text, text, integer
     api.db_tables(), api.db_connections() TO grp_dba;
 -- db_connections выполняется от имени пользователя: ему нужен доступ к функциям проверки группы.
 GRANT USAGE ON SCHEMA sec TO grp_dba;
-GRANT EXECUTE ON FUNCTION sec.require_group(text[]), sec.current_group(), sec.group_of(name) TO grp_dba;
+GRANT EXECUTE ON FUNCTION sec.require_group(text[]), sec.check_group(text[]), sec.current_group(), sec.group_of(name)
+    TO grp_dba;
 
 RESET ROLE;
