@@ -17,7 +17,9 @@ BEGIN
     FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relkind IN ('r', 'p', 'v', 'm') AND n.nspname IN ('ref', 'core', 'sec', 'audit', 'api')
       AND c.relname ILIKE ANY (ARRAY['%user%', '%role%', '%passw%', '%account%'])
-      AND (n.nspname, c.relname) <> ('sec', 'app_user');
+      AND (n.nspname, c.relname) <> ('sec', 'app_user')
+      -- запрос 11 (ЛР 6): число пользователей по группам из pg_auth_members, ничего не хранит
+      AND (n.nspname, c.relname) <> ('api', 'v_user_groups');
     PERFORM pg_temp.check('1.2 нет своих таблиц пользователей, ролей, паролей (кроме sec.app_user)',
                           v_list IS NULL, v_list);
 

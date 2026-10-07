@@ -1,5 +1,8 @@
 -- 056. Данные начальной страницы клиента: блок «Текущие дела» (docs/ui/mockup/Home.dc.html, R.todo).
 -- Счётчики считает сервер; оператор и руководитель видят только своего провайдера.
+-- Счётчик, который открывает список или отчёт, берёт число из той же функции (ЛР 6, 061), чтобы они не расходились:
+-- «Договоры без сеансов более 30 дней» — total_count api.q_idle_contracts, «Провайдеры без сотрудников» — total_count
+-- api.q_providers с отбором p_without_staff, «Выручка за …» — строка «Итого» api.report_revenue.
 -- До появления RLS отбор по провайдеру делается явно: оператору — c.provider_id = свой, руководителю и
 -- аналитику — c.provider_id = ANY (sec.scope_data()) (одно условие с индексом, D24).
 SET ROLE app_owner;
@@ -35,11 +38,8 @@ BEGIN
     IF v_group = 'grp_operator' THEN
         RETURN QUERY
         SELECT 1, 'Договоры без сеансов более 30 дней'::text,
-               (SELECT count(*) FROM core.contract c
-                WHERE c.provider_id = v_provider AND c.closed_on IS NULL
-                  AND NOT EXISTS (SELECT 1 FROM core.session s WHERE s.contract_id = c.id
-                                    AND s.started_at >= now() - interval '30 days'))::numeric,
-               'contracts'::text, now()
+               coalesce((SELECT max(q.total_count) FROM api.q_idle_contracts(30, 1, 0) q), 0)::numeric,
+               'idle_contracts'::text, now()
         UNION ALL
         SELECT 2, 'Сеансов зарегистрировано сегодня',
                (SELECT count(*) FROM core.session s JOIN core.contract c ON c.id = s.contract_id
@@ -57,14 +57,12 @@ BEGIN
                'contracts', now();
 
     ELSIF v_group IN ('grp_manager', 'grp_chief') THEN
-        -- Выручка месяца = стоимость подключения договоров, подключённых в месяце, + стоимость сеансов месяца.
+        -- Выручка месяца = плата за подключение договоров, заключённых в месяце, + оплата сеансов месяца
+        -- (строка «Итого» отчёта «Выручка по периодам»).
         RETURN QUERY
         WITH revenue AS (
-            SELECT coalesce((SELECT sum(c.connection_fee) FROM core.contract c
-                             WHERE c.provider_id = ANY (v_scope) AND c.connected_on >= v_month), 0)
-                 + coalesce((SELECT sum(s.cost) FROM core.session s JOIN core.contract c ON c.id = s.contract_id
-                             WHERE c.provider_id = ANY (v_scope)
-                               AND s.started_at >= v_month::timestamptz), 0) AS total)
+            SELECT coalesce((SELECT r.revenue FROM api.report_revenue(v_month, v_today) r WHERE r.period IS NULL), 0)
+                   AS total)
         SELECT t.ord, t.caption, t.value, t.form, now()
         FROM (
             SELECT 1 AS ord, 'Провайдеров в объединении'::text AS caption,
@@ -87,11 +85,8 @@ BEGIN
                    'contracts'
             UNION ALL
             SELECT 4, 'Договоры без сеансов более 30 дней',
-                   (SELECT count(*) FROM core.contract c
-                    WHERE c.provider_id = ANY (v_scope) AND c.closed_on IS NULL
-                      AND NOT EXISTS (SELECT 1 FROM core.session s WHERE s.contract_id = c.id
-                                        AND s.started_at >= now() - interval '30 days'))::numeric,
-                   'contracts'
+                   coalesce((SELECT max(q.total_count) FROM api.q_idle_contracts(30, 1, 0) q), 0)::numeric,
+                   'idle_contracts'
             WHERE v_group = 'grp_manager'
             UNION ALL
             SELECT 4, 'Провайдеры без новых договоров в ' || v_month_prep,
@@ -118,9 +113,8 @@ BEGIN
                'users', now()
         UNION ALL
         SELECT 3, 'Провайдеры без сотрудников',
-               (SELECT count(*) FROM core.provider p
-                WHERE NOT EXISTS (SELECT 1 FROM sec.app_user u WHERE u.provider_id = p.id))::numeric,
-               'providers', now()
+               coalesce((SELECT max(q.total_count) FROM api.q_providers(p_without_staff => true, p_limit => 1) q), 0)::numeric,
+               'providers_without_staff', now()
         UNION ALL
         SELECT 4, 'Пользователей системы',
                (SELECT count(*) FROM sec.app_user u WHERE sec.group_of(u.login) IS DISTINCT FROM 'grp_dba')::numeric,

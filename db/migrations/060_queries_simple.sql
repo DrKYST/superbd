@@ -440,12 +440,20 @@ COMMENT ON FUNCTION api.q_tariff_usage(date, date, integer, integer, integer) IS
 -- Экраны: «Провайдеры» (администратор, главный аналитик), колонка «Действующих договоров»; «Мой провайдер»
 -- (руководитель — только свой провайдер); «Провайдеры без новых договоров в …» (p_without_new).
 -- Подзапрос считает договоры только видимых провайдеров (руководителю — договоры своего, а не всех).
+-- Запрос 16 (ЛР 6, подзапрос с NOT IN): отбор «Без сотрудников» (p_without_staff) — провайдеры, которых нет во
+-- множестве провайдеров сотрудников; счётчик администратора «Провайдеры без сотрудников» — total_count с этим отбором.
+-- Подзапрос не зависит от строки провайдера и вычисляется один раз (hashed SubPlan). Левое соединение с sec.app_user
+-- и IS NULL дало бы тот же отбор, но при выключенном флажке размножило бы строки — по строке на сотрудника.
+-- Ловушка NOT IN: у администраторов и аналитиков provider_id IS NULL, а «x NOT IN (…, NULL)» никогда не истинно —
+-- без условия IS NOT NULL в подзапросе список был бы пуст (тест 12.9).
 DROP FUNCTION IF EXISTS api.q_providers(date, date, text, boolean, integer, integer);
+DROP FUNCTION IF EXISTS api.q_providers(date, date, text, boolean, boolean, integer, integer);
 CREATE OR REPLACE FUNCTION api.q_providers(
     p_from date DEFAULT NULL,
     p_to date DEFAULT NULL,
     p_search text DEFAULT NULL,
     p_without_new boolean DEFAULT false,
+    p_without_staff boolean DEFAULT false,
     p_limit integer DEFAULT 20,
     p_offset integer DEFAULT 0)
 RETURNS TABLE (
@@ -476,11 +484,13 @@ BEGIN
         GROUP BY c.provider_id) k ON k.provider_id = v.id
     WHERE (v_like IS NULL OR lower(v.name) LIKE v_like)
       AND (NOT p_without_new OR coalesce(k.new_in_period, 0) = 0)
+      AND (NOT p_without_staff
+           OR v.id NOT IN (SELECT u.provider_id FROM sec.app_user u WHERE u.provider_id IS NOT NULL))
     ORDER BY coalesce(k.active, 0) DESC, v.name
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
-COMMENT ON FUNCTION api.q_providers(date, date, text, boolean, integer, integer) IS
-    'Запрос 10 (ЛР 5). Провайдеры (представление v_providers) с числом действующих и новых за период договоров из подзапроса, включая провайдеров без договоров (запрос на запросе, левое соединение)';
+COMMENT ON FUNCTION api.q_providers(date, date, text, boolean, boolean, integer, integer) IS
+    'Запрос 10 (ЛР 5). Провайдеры (представление v_providers) с числом действующих и новых за период договоров из подзапроса, включая провайдеров без договоров (запрос на запросе, левое соединение); запрос 16 (ЛР 6) — отбор провайдеров без сотрудников (NOT IN)';
 
 -- Права: отзыв у PUBLIC и выдача группам, которым функция нужна на экранах.
 REVOKE ALL ON FUNCTION
@@ -490,7 +500,7 @@ REVOKE ALL ON FUNCTION
     api.q_contracts(date, date, integer, boolean, text, integer, integer, integer),
     api.q_subscribers(integer, boolean, text, integer, integer, integer),
     api.q_tariff_usage(date, date, integer, integer, integer),
-    api.q_providers(date, date, text, boolean, integer, integer)
+    api.q_providers(date, date, text, boolean, boolean, integer, integer)
 FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION api.q_provider_staff(integer, integer, integer) TO grp_admin, grp_manager, grp_chief;
 GRANT EXECUTE ON FUNCTION
@@ -500,6 +510,6 @@ GRANT EXECUTE ON FUNCTION
     api.q_subscribers(integer, boolean, text, integer, integer, integer)
 TO grp_operator, grp_manager, grp_chief;
 GRANT EXECUTE ON FUNCTION api.q_tariff_usage(date, date, integer, integer, integer) TO grp_manager, grp_chief;
-GRANT EXECUTE ON FUNCTION api.q_providers(date, date, text, boolean, integer, integer) TO grp_admin, grp_manager, grp_chief;
+GRANT EXECUTE ON FUNCTION api.q_providers(date, date, text, boolean, boolean, integer, integer) TO grp_admin, grp_manager, grp_chief;
 
 RESET ROLE;

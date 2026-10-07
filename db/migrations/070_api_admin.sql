@@ -8,43 +8,8 @@
 -- (временный пароль со сменой при первом входе, D27).
 SET ROLE app_owner;
 
--- Какими группами управляет пользователь группы p_group (создаёт, блокирует).
-CREATE OR REPLACE FUNCTION sec.manageable_groups(p_group text)
-RETURNS text[]
-LANGUAGE sql IMMUTABLE
-SET search_path = pg_catalog, pg_temp
-AS $$
-    SELECT CASE p_group
-               WHEN 'grp_admin' THEN ARRAY['grp_operator', 'grp_manager', 'grp_chief']
-               WHEN 'grp_dba'   THEN ARRAY['grp_admin']
-               ELSE '{}'::text[] END
-$$;
-COMMENT ON FUNCTION sec.manageable_groups(text) IS
-    'Группы, учётными записями которых управляет группа: администратор приложения — оператор, руководитель, главный аналитик; администратор БД — администратор приложения (D26)';
-
--- Какие группы видны в списке пользователей: управляемые и своя.
-CREATE OR REPLACE FUNCTION sec.visible_groups(p_group text)
-RETURNS text[]
-LANGUAGE sql IMMUTABLE
-SET search_path = pg_catalog, pg_temp
-AS $$
-    SELECT CASE WHEN p_group IN ('grp_admin', 'grp_dba') THEN sec.manageable_groups(p_group) || p_group
-                ELSE '{}'::text[] END
-$$;
-COMMENT ON FUNCTION sec.visible_groups(text) IS 'Группы, пользователи которых видны в списке «Пользователи»: управляемые и своя';
-
-CREATE OR REPLACE FUNCTION sec.group_title(p_group text)
-RETURNS text
-LANGUAGE sql IMMUTABLE
-SET search_path = pg_catalog, pg_temp
-AS $$
-    SELECT CASE p_group WHEN 'grp_admin'    THEN 'Администраторы приложения'
-                        WHEN 'grp_dba'      THEN 'Администраторы БД'
-                        WHEN 'grp_operator' THEN 'Операторы'
-                        WHEN 'grp_manager'  THEN 'Руководители'
-                        WHEN 'grp_chief'    THEN 'Главные аналитики' END
-$$;
-COMMENT ON FUNCTION sec.group_title(text) IS 'Название группы для интерфейса';
+-- Группы, которыми управляет и которые видит администратор (sec.manageable_groups, sec.visible_groups),
+-- и названия групп (sec.group_title) — в 055 рядом с sec.group_of: ими пользуется и представление 11 (061).
 
 -- ============================================================================ пользователи
 
@@ -257,7 +222,6 @@ END $$;
 COMMENT ON FUNCTION api.db_connections() IS
     'Подключения к базе: пользователь, программа, адрес, начало сеанса, состояние, ожидание, текущий запрос; только администратор БД (D26)';
 
-REVOKE ALL ON FUNCTION sec.manageable_groups(text), sec.visible_groups(text), sec.group_title(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.q_users(text, text, integer, integer), api.user_create(text, text, text, integer),
     api.user_set_login(text, boolean), api.q_change_log(date, date, text, text, text, integer, integer),
     api.db_tables(), api.db_connections() FROM PUBLIC;

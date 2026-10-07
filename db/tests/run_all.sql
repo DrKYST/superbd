@@ -22,6 +22,9 @@ SET TimeZone = 'Europe/Moscow';
 \echo '== 050 администратор приложения и администратор БД (D26)'
 \ir 050_admin_split.sql
 
+\echo '== 060 запросы ЛР 6'
+\ir 060_queries_lr6.sql
+
 \echo '== итог'
 DO $$
 DECLARE

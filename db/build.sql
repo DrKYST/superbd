@@ -20,6 +20,7 @@ DROP SCHEMA IF EXISTS api, audit, sec, core, ref CASCADE;
 \ir migrations/056_api_home.sql
 \ir migrations/057_sec_scope.sql
 \ir migrations/060_queries_simple.sql
+\ir migrations/061_queries_aggregate.sql
 \ir migrations/065_api_lookups.sql
 \ir migrations/066_api_subscriber_write.sql
 \ir migrations/070_api_admin.sql

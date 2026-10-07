@@ -46,6 +46,44 @@ AS $$
 $$;
 COMMENT ON FUNCTION sec.in_group(text) IS 'Входит ли текущий пользователь в указанную группу';
 
+-- Какими группами управляет пользователь группы p_group (создаёт, блокирует).
+CREATE OR REPLACE FUNCTION sec.manageable_groups(p_group text)
+RETURNS text[]
+LANGUAGE sql IMMUTABLE
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT CASE p_group
+               WHEN 'grp_admin' THEN ARRAY['grp_operator', 'grp_manager', 'grp_chief']
+               WHEN 'grp_dba'   THEN ARRAY['grp_admin']
+               ELSE '{}'::text[] END
+$$;
+COMMENT ON FUNCTION sec.manageable_groups(text) IS
+    'Группы, учётными записями которых управляет группа: администратор приложения — оператор, руководитель, главный аналитик; администратор БД — администратор приложения (D26)';
+
+-- Какие группы видны в списке пользователей: управляемые и своя.
+CREATE OR REPLACE FUNCTION sec.visible_groups(p_group text)
+RETURNS text[]
+LANGUAGE sql IMMUTABLE
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT CASE WHEN p_group IN ('grp_admin', 'grp_dba') THEN sec.manageable_groups(p_group) || p_group
+                ELSE '{}'::text[] END
+$$;
+COMMENT ON FUNCTION sec.visible_groups(text) IS 'Группы, пользователи которых видны в списке «Пользователи»: управляемые и своя';
+
+CREATE OR REPLACE FUNCTION sec.group_title(p_group text)
+RETURNS text
+LANGUAGE sql IMMUTABLE
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT CASE p_group WHEN 'grp_admin'    THEN 'Администраторы приложения'
+                        WHEN 'grp_dba'      THEN 'Администраторы БД'
+                        WHEN 'grp_operator' THEN 'Операторы'
+                        WHEN 'grp_manager'  THEN 'Руководители'
+                        WHEN 'grp_chief'    THEN 'Главные аналитики' END
+$$;
+COMMENT ON FUNCTION sec.group_title(text) IS 'Название группы для интерфейса';
+
 -- Провайдер текущего пользователя (оператор, руководитель); NULL у администратора и главного аналитика.
 -- SECURITY DEFINER: вызывается и из представлений api от имени пользователя, у которого нет прав
 -- на sec.app_user; сообщает только провайдера самого пользователя.
@@ -152,6 +190,7 @@ END $$;
 COMMENT ON FUNCTION api.whoami() IS
     'Текущий пользователь: логин, ФИО, группа и название роли, провайдер, организация, к кому обращаться по доступу (администраторы приложения; им — администраторы БД), база и версия СУБД, время сервера';
 
+REVOKE ALL ON FUNCTION sec.manageable_groups(text), sec.visible_groups(text), sec.group_title(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.whoami() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION api.whoami() TO grp_admin, grp_dba, grp_operator, grp_manager, grp_chief;
 
