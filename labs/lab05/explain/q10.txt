@@ -1,0 +1,110 @@
+Запрос 10. Провайдеры с числом действующих и новых за месяц договоров
+Роль: adm_main
+Где используется: «Провайдеры», колонка «Действующих договоров»
+
+-- SQL
+SELECT display_name, ownership_type, city, contracts_active, contracts_new, total_count FROM api.q_providers(date_trunc('month', current_date)::date, current_date, p_limit => 10);
+
+-- Результат (первые строки)
+    display_name    | ownership_type  |   city   | contracts_active | contracts_new | total_count 
+--------------------+-----------------+----------+------------------+---------------+-------------
+ ООО «Вега-Телеком» | ООО             | Макеевка |              406 |             1 |          31
+ «СфераЛинк»        | Государственный | Донецк   |              405 |             4 |          31
+ АО «СпектрЛинк»    | АО              | Енакиево |              397 |             3 |          31
+ «Альфа-Телеком»    | Частный         | Торез    |              394 |             2 |          31
+ ООО «АльфаЛинк»    | ООО             | Шахтёрск |              389 |             2 |          31
+ ПАО «МегаЛинк»     | ПАО             | Снежное  |              388 |             1 |          31
+ «АльфаНет»         | Частный         | Торез    |              382 |             0 |          31
+ «ДонКоннект»       | Государственный | Харцызск |              377 |             1 |          31
+ «Сфера-Телеком»    | Муниципальный   | Харцызск |              377 |             4 |          31
+ «ДонНет»           | Муниципальный   | Горловка |              374 |             2 |          31
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.026 ms  plan:
+Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
+Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Sort  (cost=2.08..2.16 rows=31 width=4) (actual rows=31.00 loops=1)
+          Sort Key: p.id
+          Sort Method: quicksort  Memory: 25kB
+          Buffers: shared hit=1
+          ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
+                Buffers: shared hit=1
+
+duration: 0.018 ms  plan:
+Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
+Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Sort  (cost=2.08..2.16 rows=31 width=4) (actual rows=31.00 loops=1)
+          Sort Key: p.id
+          Sort Method: quicksort  Memory: 25kB
+          Buffers: shared hit=1
+          ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
+                Buffers: shared hit=1
+
+duration: 3.064 ms  plan:
+Query Text: SELECT v.id, v.display_name, v.ownership_type, v.city, v.address, v.phone, v.founded_year,
+           coalesce(k.active, 0), coalesce(k.new_in_period, 0),
+           count(*) OVER ()
+    FROM api.v_providers v
+    LEFT JOIN (
+        SELECT c.provider_id,
+               count(*) FILTER (WHERE c.closed_on IS NULL) AS active,
+               count(*) FILTER (WHERE (p_from IS NULL OR c.connected_on >= p_from)
+                                  AND (p_to IS NULL OR c.connected_on <= p_to)) AS new_in_period
+        FROM core.contract c
+        WHERE c.provider_id = ANY (v_scope)
+        GROUP BY c.provider_id) k ON k.provider_id = v.id
+    WHERE (v_like IS NULL OR lower(v.name) LIKE v_like)
+      AND (NOT p_without_new OR coalesce(k.new_in_period, 0) = 0)
+    ORDER BY coalesce(k.active, 0) DESC, v.name
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=540.20..540.22 rows=9 width=224) (actual rows=10.00 loops=1)
+  Buffers: shared hit=214
+  ->  Sort  (cost=540.20..540.22 rows=9 width=224) (actual rows=10.00 loops=1)
+        Sort Key: (COALESCE(k.active, '0'::bigint)) DESC, ((p.name)::text)
+        Sort Method: top-N heapsort  Memory: 28kB
+        Buffers: shared hit=214
+        ->  WindowAgg  (cost=539.82..540.06 rows=9 width=224) (actual rows=31.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 22kB
+              Buffers: shared hit=208
+              ->  Hash Left Join  (cost=537.88..539.95 rows=9 width=216) (actual rows=31.00 loops=1)
+                    Hash Cond: (p.id = k.provider_id)
+                    Buffers: shared hit=208
+                    ->  Hash Join  (cost=2.78..4.72 rows=9 width=206) (actual rows=31.00 loops=1)
+                          Hash Cond: (p.city_id = c.id)
+                          Buffers: shared hit=4
+                          InitPlan 1
+                            ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                  Buffers: shared hit=1
+                          ->  Hash Join  (cost=1.25..2.98 rows=9 width=104) (actual rows=31.00 loops=1)
+                                Hash Cond: (p.ownership_type_id = ot.id)
+                                Buffers: shared hit=3
+                                ->  Seq Scan on provider p  (cost=0.00..1.70 rows=9 width=90) (actual rows=31.00 loops=1)
+                                      Filter: (id = ANY ((InitPlan 1).col1))
+                                      Buffers: shared hit=2
+                                ->  Hash  (cost=1.11..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                      Buffers: shared hit=1
+                                      ->  Seq Scan on ownership_type ot  (cost=0.00..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
+                                            Buffers: shared hit=1
+                          ->  Hash  (cost=1.12..1.12 rows=12 width=21) (actual rows=12.00 loops=1)
+                                Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                Buffers: shared hit=1
+                                ->  Seq Scan on city c  (cost=0.00..1.12 rows=12 width=21) (actual rows=12.00 loops=1)
+                                      Buffers: shared hit=1
+                    ->  Hash  (cost=534.73..534.73 rows=30 width=20) (actual rows=30.00 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                          Buffers: shared hit=204
+                          ->  Subquery Scan on k  (cost=534.13..534.73 rows=30 width=20) (actual rows=30.00 loops=1)
+                                Buffers: shared hit=204
+                                ->  HashAggregate  (cost=534.13..534.43 rows=30 width=20) (actual rows=30.00 loops=1)
+                                      Group Key: c_1.provider_id
+                                      Batches: 1  Memory Usage: 32kB
+                                      Buffers: shared hit=204
+                                      ->  Seq Scan on contract c_1  (cost=0.08..384.11 rows=12002 width=12) (actual rows=12002.00 loops=1)
+                                            Filter: (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[]))
+                                            Buffers: shared hit=204

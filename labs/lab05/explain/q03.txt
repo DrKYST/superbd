@@ -1,0 +1,93 @@
+Запрос 3. Журнал сеансов за текущий месяц с итогом за период
+Роль: op_donnet
+Где используется: «Сеансы связи» (Отбор, «Итого за период»)
+
+-- SQL
+SELECT started_at, contract_no, subscriber_name, ip_address, tariff_name, volume_mb, discount_pct, price_per_mb, cost, total_count, total_volume_mb, total_cost FROM api.q_sessions(date_trunc('month', current_date)::date, current_date, p_limit => 10);
+
+-- Результат (первые строки)
+          started_at           |  contract_no  |          subscriber_name           | ip_address  | tariff_name | volume_mb | discount_pct | price_per_mb |  cost  | total_count | total_volume_mb | total_cost 
+-------------------------------+---------------+------------------------------------+-------------+-------------+-----------+--------------+--------------+--------+-------------+-----------------+------------
+ 2026-10-05 05:36:31.322731+03 | Д-2024-000225 | Захаров Евгений Юрьевич            | 10.0.11.47  | Ночной      |  1075.000 |        50.00 |       0.0889 |  47.78 |          83 |       48865.775 |    3128.81
+ 2026-10-05 05:23:03.669822+03 | Д-2024-000220 | Николаев Олег Сергеевич            | 10.0.4.54   | Ночной      |   938.000 |        50.00 |       0.0610 |  28.61 |          83 |       48865.775 |    3128.81
+ 2026-10-05 05:09:36.016912+03 | Д-2024-000194 | Экономический колледж              | 10.0.43.31  | Ночной      |   801.000 |        50.00 |       0.1425 |  57.07 |          83 |       48865.775 |    3128.81
+ 2026-10-05 04:56:08.364003+03 | Д-2024-000050 | Отделение пенсионного фонда № 26   | 10.0.10.46  | Ночной      |   664.000 |        50.00 |       0.1305 |  43.33 |          83 |       48865.775 |    3128.81
+ 2026-10-05 04:42:40.711094+03 | Д-2024-000041 | ООО «Хлебозавод»                   | 10.0.12.241 | Ночной      |   527.000 |        50.00 |       0.1290 |  33.99 |          83 |       48865.775 |    3128.81
+ 2026-10-05 04:29:13.058185+03 | Д-2024-000011 | Григорьева Екатерина Андреевна     | 10.0.46.92  | Ночной      |   390.000 |        50.00 |       0.0830 |  16.19 |          83 |       48865.775 |    3128.81
+ 2026-10-05 04:15:45.405275+03 | Д-2024-000299 | Школа № 94                         | 10.0.11.112 | Ночной      |   253.000 |        50.00 |       0.1397 |  17.67 |          83 |       48865.775 |    3128.81
+ 2026-10-05 04:02:17.752366+03 | Д-2024-000266 | Андреева Алина Алексеевна          | 10.0.0.145  | Ночной      |   116.000 |        50.00 |       0.1267 |   7.35 |          83 |       48865.775 |    3128.81
+ 2026-10-05 03:48:50.099457+03 | Д-2024-000255 | Коваленко Олег Михайлович          | 10.0.19.80  | Ночной      |  2379.000 |        50.00 |       0.1268 | 150.83 |          83 |       48865.775 |    3128.81
+ 2026-10-05 03:35:22.446548+03 | Д-2024-000245 | Стоматологическая поликлиника № 16 | 10.0.16.229 | Ночной      |  2242.000 |        50.00 |       0.0922 | 103.36 |          83 |       48865.775 |    3128.81
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.033 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.09 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Rows Removed by Filter: 2
+  Buffers: shared hit=1
+
+duration: 1.140 ms  plan:
+Query Text: SELECT s.id, s.started_at, c.id, c.contract_no::text,
+           sb.id, sb.name::text, host(c.ip_address),
+           t.code::text, t.name::text, s.volume_mb::numeric, s.discount_pct::numeric,
+           c.price_per_mb::numeric, s.cost::numeric,
+           count(*) OVER (), sum(s.volume_mb) OVER (), sum(s.cost) OVER ()
+    FROM core.session s
+    JOIN core.contract c ON c.id = s.contract_id
+    JOIN core.subscriber sb ON sb.id = c.subscriber_id
+    JOIN ref.tariff t ON t.id = s.tariff_id
+    WHERE s.started_at >= p_from AND s.started_at < p_to + 1
+      AND c.provider_id = ANY (v_scope)
+      AND (p_contract_id IS NULL OR s.contract_id = p_contract_id)
+      AND (v_ip IS NULL OR c.ip_address <<= v_ip)
+      AND (p_tariff_id IS NULL OR s.tariff_id = p_tariff_id)
+    ORDER BY s.started_at DESC
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=487.40..487.43 rows=10 width=384) (actual rows=10.00 loops=1)
+  Buffers: shared hit=479
+  ->  Sort  (cost=487.40..487.60 rows=78 width=384) (actual rows=10.00 loops=1)
+        Sort Key: s.started_at DESC
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=479
+        ->  WindowAgg  (cost=482.19..485.72 rows=78 width=384) (actual rows=83.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 30kB
+              Buffers: shared hit=476
+              ->  Nested Loop  (cost=225.89..484.16 rows=78 width=139) (actual rows=83.00 loops=1)
+                    Buffers: shared hit=476
+                    ->  Nested Loop  (cost=225.74..480.92 rows=78 width=114) (actual rows=83.00 loops=1)
+                          Buffers: shared hit=462
+                          ->  Hash Join  (cost=225.46..329.36 rows=78 width=69) (actual rows=83.00 loops=1)
+                                Hash Cond: (s.contract_id = c.id)
+                                Buffers: shared hit=213
+                                ->  Index Scan Backward using ix_session_started_at on session s  (cost=0.29..98.17 rows=2294 width=38) (actual rows=2426.00 loops=1)
+                                      Index Cond: ((started_at >= '2026-10-01'::date) AND (started_at < '2026-10-06'::date))
+                                      Index Searches: 1
+                                      Buffers: shared hit=37
+                                ->  Hash  (cost=220.06..220.06 rows=409 width=35) (actual rows=409.00 loops=1)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 36kB
+                                      Buffers: shared hit=176
+                                      ->  Bitmap Heap Scan on contract c  (cost=11.45..220.06 rows=409 width=35) (actual rows=409.00 loops=1)
+                                            Recheck Cond: (provider_id = ANY ('{1}'::integer[]))
+                                            Heap Blocks: exact=174
+                                            Buffers: shared hit=176
+                                            ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..11.35 rows=409 width=0) (actual rows=412.00 loops=1)
+                                                  Index Cond: (provider_id = ANY ('{1}'::integer[]))
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=2
+                          ->  Index Scan using pk_subscriber on subscriber sb  (cost=0.28..1.94 rows=1 width=49) (actual rows=1.00 loops=83)
+                                Index Cond: (id = c.subscriber_id)
+                                Index Searches: 83
+                                Buffers: shared hit=249
+                    ->  Memoize  (cost=0.15..0.17 rows=1 width=29) (actual rows=1.00 loops=83)
+                          Cache Key: s.tariff_id
+                          Cache Mode: logical
+                          Hits: 76  Misses: 7  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+                          Buffers: shared hit=14
+                          ->  Index Scan using pk_tariff on tariff t  (cost=0.14..0.16 rows=1 width=29) (actual rows=1.00 loops=7)
+                                Index Cond: (id = s.tariff_id)
+                                Index Searches: 7
+                                Buffers: shared hit=14

@@ -1,0 +1,186 @@
+SELECT u.id, u.login::text, u.full_name::text, g.rolname::text,
+       CASE g.rolname WHEN 'grp_admin' THEN 'Администраторы' WHEN 'grp_operator' THEN 'Операторы'
+                      WHEN 'grp_manager' THEN 'Руководители' WHEN 'grp_chief' THEN 'Главные аналитики' END,
+       r.rolcanlogin, r.rolvaliduntil,
+       count(*) OVER ()
+FROM sec.app_user u
+JOIN pg_catalog.pg_roles r ON r.rolname = u.login
+JOIN pg_catalog.pg_auth_members m ON m.member = r.oid
+JOIN pg_catalog.pg_roles g ON g.oid = m.roleid
+                          AND g.rolname IN ('grp_admin', 'grp_operator', 'grp_manager', 'grp_chief')
+WHERE u.provider_id = ANY (v_scope)
+ORDER BY array_position(ARRAY['grp_manager', 'grp_operator'], g.rolname::text), u.full_name
+LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
+
+SELECT s.id, s.started_at, t.code::text, t.name::text,
+       s.volume_mb::numeric, s.discount_pct::numeric, s.cost::numeric,
+       count(*) OVER (), sum(s.volume_mb) OVER (), sum(s.cost) OVER ()
+FROM core.session s
+JOIN core.contract c ON c.id = s.contract_id
+JOIN ref.tariff t ON t.id = s.tariff_id
+WHERE s.contract_id = p_contract_id
+  AND c.provider_id = ANY (v_scope)
+  AND (p_from IS NULL OR s.started_at >= p_from)
+  AND (p_to IS NULL OR s.started_at < p_to + 1)
+ORDER BY s.started_at DESC
+LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
+
+SELECT s.id, s.started_at, c.id, c.contract_no::text,
+       sb.id, sb.name::text, host(c.ip_address),
+       t.code::text, t.name::text, s.volume_mb::numeric, s.discount_pct::numeric,
+       c.price_per_mb::numeric, s.cost::numeric,
+       count(*) OVER (), sum(s.volume_mb) OVER (), sum(s.cost) OVER ()
+FROM core.session s
+JOIN core.contract c ON c.id = s.contract_id
+JOIN core.subscriber sb ON sb.id = c.subscriber_id
+JOIN ref.tariff t ON t.id = s.tariff_id
+WHERE s.started_at >= p_from AND s.started_at < p_to + 1
+  AND c.provider_id = ANY (v_scope)
+  AND (p_contract_id IS NULL OR s.contract_id = p_contract_id)
+  AND (v_ip IS NULL OR c.ip_address <<= v_ip)
+  AND (p_tariff_id IS NULL OR s.tariff_id = p_tariff_id)
+ORDER BY s.started_at DESC
+LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
+
+SELECT c.id, c.contract_no::text,
+       CASE WHEN ot.name = upper(ot.name) THEN ot.name || ' «' || p.name || '»'
+            ELSE '«' || p.name || '»' END,
+       s.id, s.name::text, st.name::text,
+       c.connected_on, c.connection_fee::numeric, c.price_per_mb::numeric,
+       host(c.ip_address), c.closed_on,
+       CASE WHEN c.closed_on IS NULL THEN 'Действует'
+            ELSE 'Расторгнут ' || to_char(c.closed_on, 'DD.MM.YYYY') END,
+       count(*) OVER ()
+FROM core.contract c
+JOIN core.subscriber s ON s.id = c.subscriber_id
+JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
+JOIN core.provider p ON p.id = c.provider_id
+JOIN ref.ownership_type ot ON ot.id = p.ownership_type_id
+WHERE c.provider_id = ANY (v_scope)
+  AND (p_from IS NULL OR c.connected_on >= p_from)
+  AND (p_to IS NULL OR c.connected_on <= p_to)
+  AND (p_subscriber_id IS NULL OR c.subscriber_id = p_subscriber_id)
+  AND (NOT p_active_only OR c.closed_on IS NULL)
+  AND (v_like IS NULL OR c.contract_no LIKE v_no_like OR lower(s.name) LIKE v_like
+       OR host(c.ip_address) LIKE v_ip_like)
+ORDER BY c.connected_on DESC, c.contract_no DESC
+LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
+
+SELECT p.id,
+       p.name::text AS name,
+       CASE WHEN ot.name = upper(ot.name) THEN ot.name || ' «' || p.name || '»'
+            ELSE '«' || p.name || '»' END AS display_name,
+       p.ownership_type_id,
+       ot.name::text AS ownership_type,
+       p.city_id,
+       c.name::text AS city,
+       p.address::text AS address,
+       p.phone::text AS phone,
+       p.founded_year::integer AS founded_year
+FROM core.provider p
+JOIN ref.ownership_type ot ON ot.id = p.ownership_type_id
+JOIN ref.city c ON c.id = p.city_id
+WHERE p.id = ANY ((SELECT sec.scope_providers())::integer[]);
+
+SELECT s.id,
+       s.name::text AS name,
+       s.subscriber_type_id,
+       st.name::text AS subscriber_type,
+       st.is_legal,
+       s.city_id,
+       c.name::text AS city,
+       s.address::text AS address,
+       s.phone::text AS phone,
+       s.row_version,
+       (SELECT sec.current_group()) IS NOT DISTINCT FROM 'grp_admin'
+           OR (SELECT sec.current_group()) IS NOT DISTINCT FROM 'grp_operator'
+              AND NOT EXISTS (SELECT 1 FROM core.contract x
+                              WHERE x.subscriber_id = s.id
+                                AND x.provider_id IS DISTINCT FROM (SELECT sec.current_provider_id())) AS can_edit
+FROM (SELECT s0.* FROM core.subscriber s0
+      WHERE (SELECT sec.current_group()) IN ('grp_chief', 'grp_admin')
+      UNION ALL
+      SELECT s0.* FROM core.subscriber s0
+      WHERE (SELECT sec.current_group()) NOT IN ('grp_chief', 'grp_admin')
+        AND s0.id IN (SELECT v.subscriber_id FROM core.contract v
+                      WHERE v.provider_id = ANY ((SELECT sec.scope_data())::integer[]))) s
+JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
+JOIN ref.city c ON c.id = s.city_id;
+
+SELECT c.id,
+       c.contract_no::text AS contract_no,
+       c.provider_id,
+       CASE WHEN ot.name = upper(ot.name) THEN ot.name || ' «' || p.name || '»'
+            ELSE '«' || p.name || '»' END AS provider_name,
+       c.subscriber_id,
+       s.name::text AS subscriber_name,
+       st.name::text AS subscriber_type,
+       s.phone::text AS subscriber_phone,
+       c.connected_on,
+       c.connection_fee::numeric AS connection_fee,
+       c.price_per_mb::numeric AS price_per_mb,
+       host(c.ip_address) AS ip_address,
+       c.closed_on,
+       CASE WHEN c.closed_on IS NULL THEN 'Действует'
+            ELSE 'Расторгнут ' || to_char(c.closed_on, 'DD.MM.YYYY') END AS state,
+       c.note,
+       c.row_version,
+       c.connection_address::text AS connection_address,
+       c.contact_phone::text AS contact_phone,
+       c.contact_person::text AS contact_person
+FROM core.contract c
+JOIN core.subscriber s ON s.id = c.subscriber_id
+JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
+JOIN core.provider p ON p.id = c.provider_id
+JOIN ref.ownership_type ot ON ot.id = p.ownership_type_id
+WHERE c.provider_id = ANY ((SELECT sec.scope_data())::integer[]);
+
+SELECT s.id, s.name::text, st.name::text, ci.name::text, s.address::text, s.phone::text,
+       count(c.id), count(c.id) FILTER (WHERE c.closed_on IS NULL),
+       count(*) OVER ()
+FROM (SELECT s0.* FROM core.subscriber s0 WHERE v_all
+      UNION ALL
+      SELECT s0.* FROM core.subscriber s0
+      WHERE NOT v_all
+        AND s0.id IN (SELECT v.subscriber_id FROM core.contract v WHERE v.provider_id = ANY (v_scope))) s
+JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
+JOIN ref.city ci ON ci.id = s.city_id
+LEFT JOIN core.contract c ON c.subscriber_id = s.id
+                         AND c.provider_id = ANY (v_scope)
+WHERE (p_type_id IS NULL OR s.subscriber_type_id = p_type_id)
+  AND (v_like IS NULL OR lower(s.name) LIKE v_like
+       OR translate(s.phone, '+ ()-', '') LIKE v_phone_like)
+GROUP BY s.id, s.name, s.address, s.phone, st.id, ci.id
+HAVING NOT p_active_only OR count(c.id) FILTER (WHERE c.closed_on IS NULL) > 0
+ORDER BY s.name, s.id
+LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
+
+SELECT t.id::integer, t.code::text, t.name::text, t.discount_pct::numeric,
+       coalesce(u.sessions, 0), coalesce(u.volume_mb, 0)::numeric, coalesce(u.revenue, 0)::numeric,
+       count(*) OVER ()
+FROM (SELECT s.tariff_id, count(*) AS sessions, sum(s.volume_mb) AS volume_mb, sum(s.cost) AS revenue
+      FROM core.session s
+      JOIN core.contract c ON c.id = s.contract_id
+      WHERE s.started_at >= p_from AND s.started_at < p_to + 1
+        AND c.provider_id = ANY (v_scope)
+      GROUP BY s.tariff_id) u
+RIGHT JOIN ref.tariff t ON t.id = u.tariff_id
+ORDER BY t.id
+LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
+
+SELECT v.id, v.display_name, v.ownership_type, v.city, v.address, v.phone, v.founded_year,
+       coalesce(k.active, 0), coalesce(k.new_in_period, 0),
+       count(*) OVER ()
+FROM api.v_providers v
+LEFT JOIN (
+    SELECT c.provider_id,
+           count(*) FILTER (WHERE c.closed_on IS NULL) AS active,
+           count(*) FILTER (WHERE (p_from IS NULL OR c.connected_on >= p_from)
+                              AND (p_to IS NULL OR c.connected_on <= p_to)) AS new_in_period
+    FROM core.contract c
+    WHERE c.provider_id = ANY (v_scope)
+    GROUP BY c.provider_id) k ON k.provider_id = v.id
+WHERE (v_like IS NULL OR lower(v.name) LIKE v_like)
+  AND (NOT p_without_new OR coalesce(k.new_in_period, 0) = 0)
+ORDER BY coalesce(k.active, 0) DESC, v.name
+LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);

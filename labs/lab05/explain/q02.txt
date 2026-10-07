@@ -1,0 +1,68 @@
+Запрос 2. Сеансы выбранного договора за текущий месяц с итогом
+Роль: op_donnet
+Где используется: «Абоненты» → «Сеансы по договору … за …»; «Договор» → вкладка «Сеансы»
+
+-- SQL
+SELECT started_at, tariff_name, volume_mb, discount_pct, cost, total_count, total_volume_mb, total_cost FROM api.q_contract_sessions((SELECT id FROM api.v_contracts WHERE state = 'Действует' ORDER BY id LIMIT 1), date_trunc('month', current_date)::date, current_date, 10, 0);
+
+-- Результат (первые строки)
+          started_at           | tariff_name | volume_mb | discount_pct | cost  | total_count | total_volume_mb | total_cost 
+-------------------------------+-------------+-----------+--------------+-------+-------------+-----------------+------------
+ 2026-10-05 04:29:13.058185+03 | Ночной      |   390.000 |        50.00 | 16.19 |           2 |        1810.000 |      75.12
+ 2026-10-05 02:14:36.529092+03 | Ночной      |  1420.000 |        50.00 | 58.93 |           2 |        1810.000 |      75.12
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.013 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.09 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Rows Removed by Filter: 2
+  Buffers: shared hit=1
+
+duration: 0.014 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.09 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Rows Removed by Filter: 2
+  Buffers: shared hit=1
+
+duration: 0.075 ms  plan:
+Query Text: SELECT s.id, s.started_at, t.code::text, t.name::text,
+           s.volume_mb::numeric, s.discount_pct::numeric, s.cost::numeric,
+           count(*) OVER (), sum(s.volume_mb) OVER (), sum(s.cost) OVER ()
+    FROM core.session s
+    JOIN core.contract c ON c.id = s.contract_id
+    JOIN ref.tariff t ON t.id = s.tariff_id
+    WHERE s.contract_id = p_contract_id
+      AND c.provider_id = ANY (v_scope)
+      AND (p_from IS NULL OR s.started_at >= p_from)
+      AND (p_to IS NULL OR s.started_at < p_to + 1)
+    ORDER BY s.started_at DESC
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=0.70..18.00 rows=1 width=248) (actual rows=2.00 loops=1)
+  Buffers: shared hit=17
+  ->  WindowAgg  (cost=0.70..18.00 rows=1 width=248) (actual rows=2.00 loops=1)
+        Window: w1 AS ()
+        Storage: Memory  Maximum Storage: 17kB
+        Buffers: shared hit=17
+        ->  Nested Loop  (cost=0.70..17.98 rows=1 width=59) (actual rows=2.00 loops=1)
+              Join Filter: (s.tariff_id = t.id)
+              Rows Removed by Join Filter: 4
+              Buffers: shared hit=17
+              ->  Nested Loop  (cost=0.70..16.75 rows=1 width=34) (actual rows=2.00 loops=1)
+                    Buffers: shared hit=15
+                    ->  Index Scan Backward using ix_session_contract_id_started_at on session s  (cost=0.42..8.44 rows=1 width=38) (actual rows=2.00 loops=1)
+                          Index Cond: ((contract_id = 11) AND (started_at >= '2026-10-01'::date) AND (started_at < '2026-10-06'::date))
+                          Index Searches: 1
+                          Buffers: shared hit=7
+                    ->  Index Scan using pk_contract on contract c  (cost=0.29..8.30 rows=1 width=4) (actual rows=1.00 loops=2)
+                          Index Cond: (id = 11)
+                          Filter: (provider_id = ANY ('{1}'::integer[]))
+                          Index Searches: 2
+                          Buffers: shared hit=8
+              ->  Seq Scan on tariff t  (cost=0.00..1.10 rows=10 width=29) (actual rows=3.00 loops=2)
+                    Buffers: shared hit=2

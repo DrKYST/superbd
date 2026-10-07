@@ -1,0 +1,66 @@
+Запрос 5. Провайдеры с типом собственности и городом (представление)
+Роль: chief_main
+Где используется: «Провайдеры», «Мой провайдер», выбор провайдера
+
+-- SQL
+SELECT display_name, ownership_type, city, address, phone, founded_year FROM api.v_providers ORDER BY name LIMIT 10;
+
+-- Результат (первые строки)
+    display_name    | ownership_type |    city    |              address              |      phone       | founded_year 
+--------------------+----------------+------------+-----------------------------------+------------------+--------------
+ «Альфа-Телеком»    | Частный        | Торез      | ул. Гагарина, д. 121, оф. 18      | +7 856 509-86-17 |         2013
+ ПАО «АльфаКоннект» | ПАО            | Мариуполь  | ул. Университетская, д. 5, оф. 16 | +7 856 850-10-08 |         2012
+ ООО «АльфаЛинк»    | ООО            | Шахтёрск   | ул. Советская, д. 24, оф. 33      | +7 856 293-62-67 |         2004
+ «АльфаНет»         | Частный        | Торез      | ул. Щорса, д. 50, оф. 19          | +7 856 647-37-09 |         2004
+ ООО «АльфаСеть»    | ООО            | Горловка   | пр. Ленинский, д. 142, оф. 25     | +7 856 767-01-16 |         2017
+ ООО «Вега-Телеком» | ООО            | Макеевка   | ул. Горького, д. 53, оф. 19       | +7 856 823-33-06 |         2002
+ ПАО «ВегаКоннект»  | ПАО            | Снежное    | пр. Победы, д. 27, оф. 11         | +7 856 497-30-12 |         2015
+ ПАО «ВегаЛинк»     | ПАО            | Шахтёрск   | ул. Шахтёрская, д. 80, оф. 4      | +7 856 122-92-62 |         2020
+ АО «ВегаНет»       | АО             | Донецк     | пр. Мира, д. 102, оф. 37          | +7 856 115-72-72 |         2010
+ ОАО «ВегаСеть»     | ОАО            | Дебальцево | ул. Молодёжная, д. 28, оф. 33     | +7 856 927-86-51 |         1996
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.013 ms  plan:
+Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
+Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Sort  (cost=2.08..2.16 rows=31 width=4) (actual rows=31.00 loops=1)
+          Sort Key: p.id
+          Sort Method: quicksort  Memory: 25kB
+          Buffers: shared hit=1
+          ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
+                Buffers: shared hit=1
+
+duration: 2.142 ms  plan:
+Query Text: SELECT display_name, ownership_type, city, address, phone, founded_year FROM api.v_providers ORDER BY name LIMIT 10;
+Limit  (cost=4.96..4.98 rows=9 width=196) (actual rows=10.00 loops=1)
+  Buffers: shared hit=119
+  ->  Sort  (cost=4.96..4.98 rows=9 width=196) (actual rows=10.00 loops=1)
+        Sort Key: v_providers.name
+        Sort Method: top-N heapsort  Memory: 28kB
+        Buffers: shared hit=119
+        ->  Subquery Scan on v_providers  (cost=2.78..4.81 rows=9 width=196) (actual rows=31.00 loops=1)
+              Buffers: shared hit=116
+              ->  Hash Join  (cost=2.78..4.72 rows=9 width=206) (actual rows=31.00 loops=1)
+                    Hash Cond: (p.city_id = c.id)
+                    Buffers: shared hit=116
+                    InitPlan 1
+                      ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                            Buffers: shared hit=113
+                    ->  Hash Join  (cost=1.25..2.98 rows=9 width=100) (actual rows=31.00 loops=1)
+                          Hash Cond: (p.ownership_type_id = ot.id)
+                          Buffers: shared hit=115
+                          ->  Seq Scan on provider p  (cost=0.00..1.70 rows=9 width=86) (actual rows=31.00 loops=1)
+                                Filter: (id = ANY ((InitPlan 1).col1))
+                                Buffers: shared hit=114
+                          ->  Hash  (cost=1.11..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
+                                Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                Buffers: shared hit=1
+                                ->  Seq Scan on ownership_type ot  (cost=0.00..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
+                                      Buffers: shared hit=1
+                    ->  Hash  (cost=1.12..1.12 rows=12 width=21) (actual rows=12.00 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                          Buffers: shared hit=1
+                          ->  Seq Scan on city c  (cost=0.00..1.12 rows=12 width=21) (actual rows=12.00 loops=1)
+                                Buffers: shared hit=1

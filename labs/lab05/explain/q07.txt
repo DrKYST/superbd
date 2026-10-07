@@ -1,0 +1,84 @@
+Запрос 7. Договоры: полные сведения (представление)
+Роль: op_donnet
+Где используется: форма «Договор», форма выбора договора
+
+-- SQL
+SELECT contract_no, provider_name, subscriber_name, subscriber_type, connected_on, price_per_mb, ip_address, state FROM api.v_contracts ORDER BY id LIMIT 10;
+
+-- Результат (первые строки)
+  contract_no  | provider_name |          subscriber_name           |      subscriber_type       | connected_on | price_per_mb | ip_address  |   state   
+---------------+---------------+------------------------------------+----------------------------+--------------+--------------+-------------+-----------
+ Д-2024-000011 | «ДонНет»      | Григорьева Екатерина Андреевна     | Частное лицо               | 2024-01-01   |       0.0830 | 10.0.46.92  | Действует
+ Д-2024-000041 | «ДонНет»      | ООО «Хлебозавод»                   | Предприятие                | 2024-01-04   |       0.1290 | 10.0.12.241 | Действует
+ Д-2024-000050 | «ДонНет»      | Отделение пенсионного фонда № 26   | Государственное учреждение | 2024-01-05   |       0.1305 | 10.0.10.46  | Действует
+ Д-2024-000194 | «ДонНет»      | Экономический колледж              | Колледж                    | 2024-01-16   |       0.1425 | 10.0.43.31  | Действует
+ Д-2024-000220 | «ДонНет»      | Николаев Олег Сергеевич            | Частное лицо               | 2024-01-19   |       0.0610 | 10.0.4.54   | Действует
+ Д-2024-000225 | «ДонНет»      | Захаров Евгений Юрьевич            | Частное лицо               | 2024-01-19   |       0.0889 | 10.0.11.47  | Действует
+ Д-2024-000245 | «ДонНет»      | Стоматологическая поликлиника № 16 | Больница                   | 2024-01-21   |       0.0922 | 10.0.16.229 | Действует
+ Д-2024-000255 | «ДонНет»      | Коваленко Олег Михайлович          | Частное лицо               | 2024-01-22   |       0.1268 | 10.0.19.80  | Действует
+ Д-2024-000266 | «ДонНет»      | Андреева Алина Алексеевна          | Частное лицо               | 2024-01-23   |       0.1267 | 10.0.0.145  | Действует
+ Д-2024-000299 | «ДонНет»      | Школа № 94                         | Школа                      | 2024-01-25   |       0.1397 | 10.0.11.112 | Действует
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.011 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.09 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Rows Removed by Filter: 2
+  Buffers: shared hit=1
+
+duration: 9.962 ms  plan:
+Query Text: SELECT contract_no, provider_name, subscriber_name, subscriber_type, connected_on, price_per_mb, ip_address, state FROM api.v_contracts ORDER BY id LIMIT 10;
+Limit  (cost=952.13..952.16 rows=10 width=232) (actual rows=10.00 loops=1)
+  Buffers: shared hit=760
+  ->  Sort  (cost=952.13..960.76 rows=3451 width=232) (actual rows=10.00 loops=1)
+        Sort Key: v_contracts.id
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=760
+        ->  Subquery Scan on v_contracts  (cost=422.04..877.56 rows=3451 width=232) (actual rows=409.00 loops=1)
+              Buffers: shared hit=757
+              ->  Hash Join  (cost=422.04..843.05 rows=3451 width=440) (actual rows=409.00 loops=1)
+                    Hash Cond: (p.ownership_type_id = ot.id)
+                    Buffers: shared hit=757
+                    InitPlan 1
+                      ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                            Buffers: shared hit=434
+                    ->  Hash Join  (cost=420.53..734.08 rows=3451 width=133) (actual rows=409.00 loops=1)
+                          Hash Cond: (c.provider_id = p.id)
+                          Buffers: shared hit=756
+                          ->  Hash Join  (cost=418.84..722.09 rows=3451 width=115) (actual rows=409.00 loops=1)
+                                Hash Cond: (s.subscriber_type_id = st.id)
+                                Buffers: shared hit=755
+                                ->  Hash Join  (cost=417.59..708.29 rows=3451 width=90) (actual rows=409.00 loops=1)
+                                      Hash Cond: (c.subscriber_id = s.id)
+                                      Buffers: shared hit=754
+                                      ->  Bitmap Heap Scan on contract c  (cost=93.59..375.24 rows=3451 width=47) (actual rows=409.00 loops=1)
+                                            Recheck Cond: (provider_id = ANY ((InitPlan 1).col1))
+                                            Heap Blocks: exact=174
+                                            Buffers: shared hit=610
+                                            ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..92.72 rows=3451 width=0) (actual rows=412.00 loops=1)
+                                                  Index Cond: (provider_id = ANY ((InitPlan 1).col1))
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=436
+                                      ->  Hash  (cost=224.00..224.00 rows=8000 width=51) (actual rows=8000.00 loops=1)
+                                            Buckets: 8192  Batches: 1  Memory Usage: 729kB
+                                            Buffers: shared hit=144
+                                            ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=51) (actual rows=8000.00 loops=1)
+                                                  Buffers: shared hit=144
+                                ->  Hash  (cost=1.11..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                      Buffers: shared hit=1
+                                      ->  Seq Scan on subscriber_type st  (cost=0.00..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
+                                            Buffers: shared hit=1
+                          ->  Hash  (cost=1.31..1.31 rows=31 width=26) (actual rows=31.00 loops=1)
+                                Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                Buffers: shared hit=1
+                                ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=26) (actual rows=31.00 loops=1)
+                                      Buffers: shared hit=1
+                    ->  Hash  (cost=1.11..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                          Buffers: shared hit=1
+                          ->  Seq Scan on ownership_type ot  (cost=0.00..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
+                                Buffers: shared hit=1

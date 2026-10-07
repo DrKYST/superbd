@@ -1,0 +1,108 @@
+Запрос 4. Договоры, заключённые с начала года
+Роль: op_donnet
+Где используется: «Договоры»; «Договоров заключено на этой неделе»
+
+-- SQL
+SELECT contract_no, subscriber_name, subscriber_type, connected_on, connection_fee, price_per_mb, ip_address, state, total_count FROM api.q_contracts(date_trunc('year', current_date)::date, current_date, p_limit => 10);
+
+-- Результат (первые строки)
+  contract_no  |         subscriber_name         |        subscriber_type         | connected_on | connection_fee | price_per_mb | ip_address  |         state         | total_count 
+---------------+---------------------------------+--------------------------------+--------------+----------------+--------------+-------------+-----------------------+-------------
+ Д-2026-012002 | Бондаренко Николай Павлович     | Частное лицо                   | 2026-10-05   |         500.00 |       0.0450 | 10.200.0.2  | Действует             |         105
+ Д-2026-012001 | Сергеев Роман Алексеевич        | Частное лицо                   | 2026-10-05   |         500.00 |       0.0450 | 10.200.0.1  | Действует             |         105
+ Д-2026-011909 | Васильев Андрей Викторович      | Частное лицо                   | 2026-09-27   |         250.00 |       0.0578 | 10.0.26.40  | Действует             |         105
+ Д-2026-011887 | Андреев Владислав Александрович | Частное лицо                   | 2026-09-25   |           0.00 |       0.0766 | 10.0.29.189 | Действует             |         105
+ Д-2026-011817 | ИП Сергеев В. Н.                | Индивидуальный предприниматель | 2026-09-19   |         150.00 |       0.0996 | 10.0.21.43  | Действует             |         105
+ Д-2026-011804 | Воробьёва Галина Сергеевна      | Частное лицо                   | 2026-09-18   |        1300.00 |       0.1380 | 10.0.26.87  | Действует             |         105
+ Д-2026-011778 | Козлов Владислав Алексеевич     | Частное лицо                   | 2026-09-16   |         600.00 |       0.0841 | 10.0.12.215 | Действует             |         105
+ Д-2026-011776 | Козлова Виктория Юрьевна        | Частное лицо                   | 2026-09-15   |        1350.00 |       0.1742 | 10.0.46.197 | Действует             |         105
+ Д-2026-011725 | ООО «Прогресс»                  | Предприятие                    | 2026-09-11   |        1450.00 |       0.0703 | 10.0.35.97  | Действует             |         105
+ Д-2026-011704 | ЧП «Автотранс»                  | Предприятие                    | 2026-09-09   |         500.00 |       0.0614 | 10.0.39.46  | Расторгнут 18.09.2026 |         105
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.012 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.09 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Rows Removed by Filter: 2
+  Buffers: shared hit=1
+
+duration: 1.095 ms  plan:
+Query Text: SELECT c.id, c.contract_no::text,
+           CASE WHEN ot.name = upper(ot.name) THEN ot.name || ' «' || p.name || '»'
+                ELSE '«' || p.name || '»' END,
+           s.id, s.name::text, st.name::text,
+           c.connected_on, c.connection_fee::numeric, c.price_per_mb::numeric,
+           host(c.ip_address), c.closed_on,
+           CASE WHEN c.closed_on IS NULL THEN 'Действует'
+                ELSE 'Расторгнут ' || to_char(c.closed_on, 'DD.MM.YYYY') END,
+           count(*) OVER ()
+    FROM core.contract c
+    JOIN core.subscriber s ON s.id = c.subscriber_id
+    JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
+    JOIN core.provider p ON p.id = c.provider_id
+    JOIN ref.ownership_type ot ON ot.id = p.ownership_type_id
+    WHERE c.provider_id = ANY (v_scope)          -- у общего абонента (D25) — только договоры видимых провайдеров
+      AND (p_from IS NULL OR c.connected_on >= p_from)
+      AND (p_to IS NULL OR c.connected_on <= p_to)
+      AND (p_subscriber_id IS NULL OR c.subscriber_id = p_subscriber_id)
+      AND (NOT p_active_only OR c.closed_on IS NULL)
+      AND (v_like IS NULL OR c.contract_no LIKE v_no_like OR lower(s.name) LIKE v_like
+           OR host(c.ip_address) LIKE v_ip_like)
+    ORDER BY c.connected_on DESC, c.contract_no DESC
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=507.59..507.62 rows=10 width=295) (actual rows=10.00 loops=1)
+  Buffers: shared hit=218
+  ->  Sort  (cost=507.59..507.87 rows=111 width=295) (actual rows=10.00 loops=1)
+        Sort Key: c.connected_on DESC, ((c.contract_no)::text) DESC
+        Sort Method: top-N heapsort  Memory: 28kB
+        Buffers: shared hit=218
+        ->  WindowAgg  (cost=499.34..505.19 rows=111 width=295) (actual rows=105.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 36kB
+              Buffers: shared hit=212
+              ->  Hash Join  (cost=190.59..500.75 rows=111 width=155) (actual rows=105.00 loops=1)
+                    Hash Cond: (p.ownership_type_id = ot.id)
+                    Buffers: shared hit=212
+                    ->  Hash Join  (cost=189.34..499.10 rows=111 width=141) (actual rows=105.00 loops=1)
+                          Hash Cond: (c.provider_id = p.id)
+                          Buffers: shared hit=211
+                          ->  Nested Loop  (cost=187.64..497.07 rows=111 width=123) (actual rows=105.00 loops=1)
+                                Buffers: shared hit=210
+                                ->  Hash Join  (cost=187.50..492.61 rows=111 width=98) (actual rows=105.00 loops=1)
+                                      Hash Cond: (s.id = c.subscriber_id)
+                                      Buffers: shared hit=192
+                                      ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=51) (actual rows=8000.00 loops=1)
+                                            Buffers: shared hit=144
+                                      ->  Hash  (cost=186.11..186.11 rows=111 width=51) (actual rows=105.00 loops=1)
+                                            Buckets: 1024  Batches: 1  Memory Usage: 18kB
+                                            Buffers: shared hit=48
+                                            ->  Bitmap Heap Scan on contract c  (cost=5.70..186.11 rows=111 width=51) (actual rows=105.00 loops=1)
+                                                  Recheck Cond: ((provider_id = ANY ('{1}'::integer[])) AND (connected_on >= '2026-01-01'::date) AND (connected_on <= '2026-10-05'::date))
+                                                  Heap Blocks: exact=46
+                                                  Buffers: shared hit=48
+                                                  ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..5.67 rows=111 width=0) (actual rows=107.00 loops=1)
+                                                        Index Cond: ((provider_id = ANY ('{1}'::integer[])) AND (connected_on >= '2026-01-01'::date) AND (connected_on <= '2026-10-05'::date))
+                                                        Index Searches: 1
+                                                        Buffers: shared hit=2
+                                ->  Memoize  (cost=0.15..0.16 rows=1 width=29) (actual rows=1.00 loops=105)
+                                      Cache Key: s.subscriber_type_id
+                                      Cache Mode: logical
+                                      Hits: 96  Misses: 9  Evictions: 0  Overflows: 0  Memory Usage: 2kB
+                                      Buffers: shared hit=18
+                                      ->  Index Scan using pk_subscriber_type on subscriber_type st  (cost=0.14..0.15 rows=1 width=29) (actual rows=1.00 loops=9)
+                                            Index Cond: (id = s.subscriber_type_id)
+                                            Index Searches: 9
+                                            Buffers: shared hit=18
+                          ->  Hash  (cost=1.31..1.31 rows=31 width=26) (actual rows=31.00 loops=1)
+                                Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                Buffers: shared hit=1
+                                ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=26) (actual rows=31.00 loops=1)
+                                      Buffers: shared hit=1
+                    ->  Hash  (cost=1.11..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                          Buffers: shared hit=1
+                          ->  Seq Scan on ownership_type ot  (cost=0.00..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
+                                Buffers: shared hit=1

@@ -1,0 +1,91 @@
+Запрос 6. Абоненты с типом и городом (представление)
+Роль: op_donnet
+Где используется: форма выбора абонента, карточка абонента
+
+-- SQL
+SELECT name, subscriber_type, is_legal, city, address, phone FROM api.v_subscribers ORDER BY name LIMIT 10;
+
+-- Результат (первые строки)
+              name               |      subscriber_type       | is_legal |    city    |           address            |      phone       
+---------------------------------+----------------------------+----------+------------+------------------------------+------------------
+ Администрация района № 2        | Государственное учреждение | t        | Макеевка   | ул. Набережная, д. 112       | +7 856 844-74-29
+ Администрация района № 23       | Государственное учреждение | t        | Харцызск   | ул. Кирова, д. 28            | +7 856 768-39-83
+ Администрация района № 29       | Государственное учреждение | t        | Ясиноватая | ул. Щорса, д. 54             | +7 856 115-41-35
+ Алексеев Евгений Викторович     | Частное лицо               | f        | Торез      | пр. Победы, д. 57, кв. 97    | +7 901 127-18-71
+ Алексеева Валентина Михайловна  | Частное лицо               | f        | Снежное    | ул. Артёма, д. 119, кв. 160  | +7 901 455-05-52
+ Алексеева Виктория Владимировна | Частное лицо               | f        | Макеевка   | пр. Мира, д. 45              | +7 990 422-57-63
+ Алексеева Мария Николаевна      | Частное лицо               | f        | Шахтёрск   | ул. Щорса, д. 69             | +7 990 140-20-30
+ Алексеева Наталья Сергеевна     | Частное лицо               | f        | Донецк     | ул. Советская, д. 60, кв. 50 | +7 901 197-27-39
+ Андреев Владислав Александрович | Частное лицо               | f        | Харцызск   | бул. Шевченко, д. 46         | +7 949 144-58-61
+ Андреев Владислав Михайлович    | Частное лицо               | f        | Харцызск   | пр. Ильича, д. 81            | +7 949 175-52-38
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.012 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.09 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Rows Removed by Filter: 2
+  Buffers: shared hit=1
+
+duration: 7.178 ms  plan:
+Query Text: SELECT name, subscriber_type, is_legal, city, address, phone FROM api.v_subscribers ORDER BY name LIMIT 10;
+Limit  (cost=1067.08..1067.11 rows=10 width=161) (actual rows=10.00 loops=1)
+  Buffers: shared hit=581
+  ->  Sort  (cost=1067.08..1067.18 rows=38 width=161) (actual rows=10.00 loops=1)
+        Sort Key: v_subscribers.name
+        Sort Method: top-N heapsort  Memory: 29kB
+        Buffers: shared hit=581
+        ->  Subquery Scan on v_subscribers  (cost=2.78..1066.26 rows=38 width=161) (actual rows=289.00 loops=1)
+              Buffers: shared hit=578
+              ->  Hash Join  (cost=2.78..1065.88 rows=38 width=176) (actual rows=289.00 loops=1)
+                    Hash Cond: ("*SELECT* 1".city_id = c.id)
+                    Buffers: shared hit=578
+                    ->  Hash Join  (cost=1.51..1062.92 rows=630 width=129) (actual rows=289.00 loops=1)
+                          Hash Cond: ("*SELECT* 1".subscriber_type_id = st.id)
+                          Buffers: shared hit=577
+                          ->  Append  (cost=0.26..1030.98 rows=11451 width=103) (actual rows=289.00 loops=1)
+                                Buffers: shared hit=576
+                                ->  Subquery Scan on "*SELECT* 1"  (cost=0.26..304.26 rows=8000 width=103) (actual rows=0.00 loops=1)
+                                      Buffers: shared hit=64
+                                      ->  Result  (cost=0.26..224.26 rows=8000 width=111) (actual rows=0.00 loops=1)
+                                            One-Time Filter: ((InitPlan 1).col1 = ANY ('{grp_chief,grp_admin}'::text[]))
+                                            Buffers: shared hit=64
+                                            InitPlan 1
+                                              ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                                    Buffers: shared hit=64
+                                            ->  Seq Scan on subscriber s0  (cost=0.00..224.00 rows=8000 width=103) (never executed)
+                                ->  Subquery Scan on "*SELECT* 2"  (cost=324.81..669.47 rows=3451 width=103) (actual rows=289.00 loops=1)
+                                      Buffers: shared hit=512
+                                      ->  Result  (cost=324.81..634.96 rows=3451 width=111) (actual rows=289.00 loops=1)
+                                            One-Time Filter: ((InitPlan 2).col1 <> ALL ('{grp_chief,grp_admin}'::text[]))
+                                            Buffers: shared hit=512
+                                            InitPlan 2
+                                              ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                            InitPlan 3
+                                              ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                                    Buffers: shared hit=325
+                                            ->  Hash Right Semi Join  (cost=324.29..634.44 rows=3451 width=103) (actual rows=289.00 loops=1)
+                                                  Hash Cond: (v.subscriber_id = s0_1.id)
+                                                  Buffers: shared hit=512
+                                                  ->  Index Only Scan using ix_contract_subscriber_id_provider_id on contract v  (cost=0.29..284.81 rows=3451 width=4) (actual rows=409.00 loops=1)
+                                                        Index Cond: (provider_id = ANY ((InitPlan 3).col1))
+                                                        Heap Fetches: 3
+                                                        Index Searches: 1
+                                                        Buffers: shared hit=368
+                                                  ->  Hash  (cost=224.00..224.00 rows=8000 width=107) (actual rows=8000.00 loops=1)
+                                                        Buckets: 8192  Batches: 1  Memory Usage: 1184kB
+                                                        Buffers: shared hit=144
+                                                        ->  Seq Scan on subscriber s0_1  (cost=0.00..224.00 rows=8000 width=107) (actual rows=8000.00 loops=1)
+                                                              Buffers: shared hit=144
+                          ->  Hash  (cost=1.11..1.11 rows=11 width=30) (actual rows=11.00 loops=1)
+                                Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                Buffers: shared hit=1
+                                ->  Seq Scan on subscriber_type st  (cost=0.00..1.11 rows=11 width=30) (actual rows=11.00 loops=1)
+                                      Buffers: shared hit=1
+                    ->  Hash  (cost=1.12..1.12 rows=12 width=21) (actual rows=12.00 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                          Buffers: shared hit=1
+                          ->  Seq Scan on city c  (cost=0.00..1.12 rows=12 width=21) (actual rows=12.00 loops=1)
+                                Buffers: shared hit=1

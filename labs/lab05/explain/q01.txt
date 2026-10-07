@@ -1,0 +1,79 @@
+Запрос 1. Сотрудники провайдера «ДонНет»
+Роль: adm_main
+Где используется: «Провайдеры» → «Сотрудники провайдера»
+
+-- SQL
+SELECT login, full_name, group_title, can_login, total_count FROM api.q_provider_staff((SELECT id FROM api.v_providers WHERE name = 'ДонНет'));
+
+-- Результат (первые строки)
+   login    |        full_name         | group_title  | can_login | total_count 
+------------+--------------------------+--------------+-----------+-------------
+ mgr_donnet | Руденко Олег Николаевич  | Руководители | t         |           3
+ op_donnet2 | Бойко Светлана Андреевна | Операторы    | t         |           3
+ op_donnet  | Лысенко Ирина Олеговна   | Операторы    | t         |           3
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.014 ms  plan:
+Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
+Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Sort  (cost=2.08..2.16 rows=31 width=4) (actual rows=31.00 loops=1)
+          Sort Key: p.id
+          Sort Method: quicksort  Memory: 25kB
+          Buffers: shared hit=1
+          ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
+                Buffers: shared hit=1
+
+duration: 0.180 ms  plan:
+Query Text: SELECT u.id, u.login::text, u.full_name::text, g.rolname::text,
+           CASE g.rolname WHEN 'grp_admin' THEN 'Администраторы' WHEN 'grp_operator' THEN 'Операторы'
+                          WHEN 'grp_manager' THEN 'Руководители' WHEN 'grp_chief' THEN 'Главные аналитики' END,
+           r.rolcanlogin, r.rolvaliduntil,
+           count(*) OVER ()
+    FROM sec.app_user u
+    JOIN pg_catalog.pg_roles r ON r.rolname = u.login
+    JOIN pg_catalog.pg_auth_members m ON m.member = r.oid
+    JOIN pg_catalog.pg_roles g ON g.oid = m.roleid
+                              AND g.rolname IN ('grp_admin', 'grp_operator', 'grp_manager', 'grp_chief')
+    WHERE u.provider_id = ANY (v_scope)
+    ORDER BY array_position(ARRAY['grp_manager', 'grp_operator'], g.rolname::text), u.full_name
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=5.15..5.16 rows=1 width=198) (actual rows=3.00 loops=1)
+  Buffers: shared hit=9
+  ->  Sort  (cost=5.15..5.16 rows=1 width=198) (actual rows=3.00 loops=1)
+        Sort Key: (array_position('{grp_manager,grp_operator}'::text[], (pg_authid_1.rolname)::text)), ((u.full_name)::text)
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=9
+        ->  WindowAgg  (cost=2.51..5.14 rows=1 width=198) (actual rows=3.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=6
+              ->  Nested Loop  (cost=2.51..5.11 rows=1 width=132) (actual rows=3.00 loops=1)
+                    Join Filter: (m.roleid = pg_authid_1.oid)
+                    Rows Removed by Join Filter: 4
+                    Buffers: shared hit=6
+                    ->  Hash Join  (cost=2.51..3.64 rows=1 width=72) (actual rows=3.00 loops=1)
+                          Hash Cond: (m.member = pg_authid.oid)
+                          Buffers: shared hit=3
+                          ->  Seq Scan on pg_auth_members m  (cost=0.00..1.09 rows=9 width=8) (actual rows=9.00 loops=1)
+                                Buffers: shared hit=1
+                          ->  Hash  (cost=2.47..2.47 rows=3 width=72) (actual rows=3.00 loops=1)
+                                Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                Buffers: shared hit=2
+                                ->  Hash Join  (cost=1.10..2.47 rows=3 width=72) (actual rows=3.00 loops=1)
+                                      Hash Cond: (pg_authid.rolname = (u.login)::text)
+                                      Buffers: shared hit=2
+                                      ->  Seq Scan on pg_authid  (cost=0.00..1.28 rows=28 width=77) (actual rows=28.00 loops=1)
+                                            Buffers: shared hit=1
+                                      ->  Hash  (cost=1.07..1.07 rows=3 width=59) (actual rows=3.00 loops=1)
+                                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                            Buffers: shared hit=1
+                                            ->  Seq Scan on app_user u  (cost=0.00..1.07 rows=3 width=59) (actual rows=3.00 loops=1)
+                                                  Filter: (provider_id = ANY ('{1}'::integer[]))
+                                                  Rows Removed by Filter: 3
+                                                  Buffers: shared hit=1
+                    ->  Seq Scan on pg_authid pg_authid_1  (cost=0.00..1.42 rows=4 width=68) (actual rows=2.33 loops=3)
+                          Filter: (rolname = ANY ('{grp_admin,grp_operator,grp_manager,grp_chief}'::name[]))
+                          Rows Removed by Filter: 18
+                          Buffers: shared hit=3

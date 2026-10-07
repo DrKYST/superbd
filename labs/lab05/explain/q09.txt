@@ -1,0 +1,83 @@
+Запрос 9. Использование тарифов за текущий месяц, включая неиспользованные
+Роль: mgr_donnet
+Где используется: «Статистика» → «Трафик по тарифам»
+
+-- SQL
+SELECT tariff_code, tariff_name, discount_pct, sessions_count, volume_mb, revenue FROM api.q_tariff_usage(date_trunc('month', current_date)::date, current_date);
+
+-- Результат (первые строки)
+ tariff_code |    tariff_name    | discount_pct | sessions_count | volume_mb | revenue 
+-------------+-------------------+--------------+----------------+-----------+---------
+ Б           | Бизнес-время      |         0.00 |             10 |  4507.528 |  576.24
+ В           | Вечерний          |        20.00 |              5 |  1369.948 |   89.54
+ Н           | Ночной            |        50.00 |             32 | 27094.331 | 1472.50
+ ВД          | Выходной дневной  |        30.00 |             12 |  7117.782 |  605.13
+ ВВ          | Выходной вечерний |        40.00 |              3 |   171.267 |   15.03
+ ВН          | Выходной ночной   |        60.00 |             17 |  7868.417 |  334.98
+ П           | Праздничный       |        50.00 |              0 |         0 |       0
+ О           | Образовательный   |        70.00 |              4 |   736.502 |   35.39
+ А           | Акционный         |        25.00 |              0 |         0 |       0
+ С           | Служебный         |       100.00 |              0 |         0 |       0
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 0.035 ms  plan:
+Query Text: 
+    SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
+
+Seq Scan on app_user u  (cost=0.00..1.09 rows=1 width=4) (actual rows=1.00 loops=1)
+  Filter: ((login)::text = SESSION_USER)
+  Buffers: shared hit=1
+
+duration: 0.706 ms  plan:
+Query Text: SELECT t.id::integer, t.code::text, t.name::text, t.discount_pct::numeric,
+           coalesce(u.sessions, 0), coalesce(u.volume_mb, 0)::numeric, coalesce(u.revenue, 0)::numeric,
+           count(*) OVER ()
+    FROM (SELECT s.tariff_id, count(*) AS sessions, sum(s.volume_mb) AS volume_mb, sum(s.cost) AS revenue
+          FROM core.session s
+          JOIN core.contract c ON c.id = s.contract_id
+          WHERE s.started_at >= p_from AND s.started_at < p_to + 1
+            AND c.provider_id = ANY (v_scope)
+          GROUP BY s.tariff_id) u
+    RIGHT JOIN ref.tariff t ON t.id = u.tariff_id
+    ORDER BY t.id
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=334.39..334.56 rows=10 width=182) (actual rows=10.00 loops=1)
+  Buffers: shared hit=214
+  ->  WindowAgg  (cost=334.39..334.56 rows=10 width=182) (actual rows=10.00 loops=1)
+        Window: w1 AS ()
+        Storage: Memory  Maximum Storage: 17kB
+        Buffers: shared hit=214
+        ->  Merge Left Join  (cost=333.08..334.41 rows=10 width=105) (actual rows=10.00 loops=1)
+              Merge Cond: (t.id = s.tariff_id)
+              Buffers: shared hit=214
+              ->  Sort  (cost=1.27..1.29 rows=10 width=33) (actual rows=10.00 loops=1)
+                    Sort Key: t.id
+                    Sort Method: quicksort  Memory: 25kB
+                    Buffers: shared hit=1
+                    ->  Seq Scan on tariff t  (cost=0.00..1.10 rows=10 width=33) (actual rows=10.00 loops=1)
+                          Buffers: shared hit=1
+              ->  GroupAggregate  (cost=331.81..332.91 rows=8 width=74) (actual rows=7.00 loops=1)
+                    Group Key: s.tariff_id
+                    Buffers: shared hit=213
+                    ->  Sort  (cost=331.81..332.01 rows=78 width=14) (actual rows=83.00 loops=1)
+                          Sort Key: s.tariff_id
+                          Sort Method: quicksort  Memory: 27kB
+                          Buffers: shared hit=213
+                          ->  Hash Join  (cost=225.46..329.36 rows=78 width=14) (actual rows=83.00 loops=1)
+                                Hash Cond: (s.contract_id = c.id)
+                                Buffers: shared hit=213
+                                ->  Index Scan using ix_session_started_at on session s  (cost=0.29..98.17 rows=2294 width=18) (actual rows=2426.00 loops=1)
+                                      Index Cond: ((started_at >= '2026-10-01'::date) AND (started_at < '2026-10-06'::date))
+                                      Index Searches: 1
+                                      Buffers: shared hit=37
+                                ->  Hash  (cost=220.06..220.06 rows=409 width=4) (actual rows=409.00 loops=1)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 23kB
+                                      Buffers: shared hit=176
+                                      ->  Bitmap Heap Scan on contract c  (cost=11.45..220.06 rows=409 width=4) (actual rows=409.00 loops=1)
+                                            Recheck Cond: (provider_id = ANY ('{1}'::integer[]))
+                                            Heap Blocks: exact=174
+                                            Buffers: shared hit=176
+                                            ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..11.35 rows=409 width=0) (actual rows=412.00 loops=1)
+                                                  Index Cond: (provider_id = ANY ('{1}'::integer[]))
+                                                  Index Searches: 1
+                                                  Buffers: shared hit=2
