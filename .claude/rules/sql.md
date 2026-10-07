@@ -28,26 +28,37 @@ paths:
 CREATE OR REPLACE FUNCTION api.contract_list(
     p_search text DEFAULT NULL, p_limit int DEFAULT 20, p_offset int DEFAULT 0)
 RETURNS TABLE (id int, contract_no text, subscriber text, connected_on date, total_count bigint)
-LANGUAGE plpgsql SECURITY DEFINER
+LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
+SET TimeZone = 'Europe/Moscow'
+SET plan_cache_mode = force_custom_plan          -- есть необязательный отбор (p_search)
 AS $$
+DECLARE
+    v_scope integer[] := sec.scope_data();       -- видимые провайдеры, один раз
+    v_like  text := sec.like_prefix(p_search);   -- шаблон «начинается с», один раз
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_operator','grp_manager','grp_chief']);
     RETURN QUERY
-    SELECT c.id, c.contract_no, s.name, c.connected_on, count(*) OVER ()
+    SELECT c.id, c.contract_no::text, s.name::text, c.connected_on, count(*) OVER ()
     FROM core.contract c JOIN core.subscriber s ON s.id = c.subscriber_id
-    WHERE p_search IS NULL OR s.name ILIKE '%' || p_search || '%'
+    WHERE c.provider_id = ANY (v_scope)
+      AND (v_like IS NULL OR lower(s.name) LIKE v_like)
     ORDER BY c.connected_on DESC
-    LIMIT least(p_limit, 200) OFFSET p_offset;
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
 REVOKE ALL ON FUNCTION api.contract_list(text,int,int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION api.contract_list(text,int,int) TO grp_operator, grp_manager, grp_chief;
 ```
-- Всегда: `SECURITY DEFINER`, `SET search_path = pg_catalog, pg_temp`, полностью квалифицированные имена, проверка группы первой строкой, явный `REVOKE … FROM PUBLIC` + `GRANT` группам.
+- Всегда: `SECURITY DEFINER`, `SET search_path = pg_catalog, pg_temp`, `SET TimeZone = 'Europe/Moscow'` (D19: драйвер QPSQL ставит сеансу UTC, а даты, время суток и дни недели считаются по местному времени; то же — в триггерных функциях), полностью квалифицированные имена, проверка группы первой строкой, явный `REVOKE … FROM PUBLIC` + `GRANT` группам.
 - `ALTER DEFAULT PRIVILEGES FOR ROLE app_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;` — в миграции ролей.
 - Ошибки для пользователя: `RAISE EXCEPTION 'Договор не найден' USING ERRCODE = 'P0001';` — текст на русском, без технических деталей.
 - Динамический SQL только через `format('%I', …)` / `%L` / `USING`. Никакой конкатенации пользовательского ввода.
-- `CREATE ROLE` из функции — только для белого списка групп; логин проверять регуляркой `^[a-z][a-z0-9_]{2,30}$`.
+- `CREATE ROLE` из функции — только для белого списка групп; логин проверять доменом `ref.d_login` (без регулярных выражений).
+
+## Регулярные выражения и оптимизация (D24, замечание студента)
+- Регулярные выражения (`~`, `~*`, `regexp_*`, `SIMILAR TO`, `QRegularExpression`) не использовать нигде: символы — `translate()`, поиск — `LIKE` по префиксу, `strpos`, `left`. Тест 8.1 это проверяет.
+- Запросы и бизнес-логику писать в оптимизированной форме (Карпова, гл. 9; Лузанов — индексы): условие «столбец ОС константа»; видимость — `provider_id = ANY (v_scope)` из `sec.scope_data()`/`sec.scope_providers()`, не `(флаг OR provider_id = …)`; выражения от параметров — один раз в `DECLARE`; выборка на каждой таблице до соединения, группировка до соединения и по PK; функции с необязательными отборами `(p IS NULL OR …)` — `SET plan_cache_mode = force_custom_plan`; индекс под каждое условие экрана.
+- После изменения запроса — `python labs/lab05/run_queries.py` (или аналог лабы) и просмотр плана: нет ли чтения таблицы целиком там, где нужны строки одного провайдера.
 
 ## RLS
 - `ENABLE` и `FORCE ROW LEVEL SECURITY` на всех таблицах `core`.

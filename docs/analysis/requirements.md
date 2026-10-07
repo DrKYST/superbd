@@ -24,14 +24,15 @@ schema audit — журнал изменений (jsonb)
 
 | Группа PostgreSQL | Кто | Привязка к провайдеру | Видимость строк |
 |---|---|---|---|
-| `grp_admin` | Администратор системы | нет | справочники, провайдеры, пользователи; оперативные данные не нужны → не показываются |
+| `grp_admin` | Администратор приложения (D26) | нет | справочники, провайдеры, пользователи — операторы, руководители, главные аналитики; оперативные данные не нужны → не показываются |
+| `grp_dba` | Администратор БД (D26) | нет | пользователи — администраторы приложения; журнал изменений, таблицы, подключения; через `api` данных приложения не видит; чтение таблиц (`pg_read_all_data`) — только для резервных копий, структура — через `SET ROLE app_owner` |
 | `grp_operator` | Оператор (сотрудник провайдера) | обязательна | только абоненты/договоры/сеансы своего провайдера |
 | `grp_manager` | Руководитель провайдера | обязательна | статистика и данные своего провайдера, только чтение |
 | `grp_chief` | Главный аналитик объединения («председатель») | нет | сводная статистика по всем провайдерам, только чтение |
 
 Правила (из методички, обязательны):
 - Пользователь = LOGIN-роль PostgreSQL, член ровно одной группы. Пароли хранит только PostgreSQL.
-- Группа определяется функцией `sec.current_group()` через `pg_has_role(session_user, …, 'MEMBER')`, а не по полю таблицы.
+- Группа определяется функцией `sec.current_group()` по прямому членству `session_user` в группе (`sec.group_of`, системный каталог `pg_auth_members`), а не по полю таблицы. `pg_has_role(…, 'MEMBER')` не подходит: учитывает и косвенное членство (D26).
 - `sec.app_user(login, full_name, provider_id)` хранит только привязку к провайдеру и ФИО.
 - Клиент строит интерфейс **после** успешного подключения по результату `api.whoami()` → (логин, ФИО, группа, провайдер). Скрытие кнопок на клиенте — удобство; реальный запрет — в БД.
 
@@ -40,7 +41,7 @@ schema audit — журнал изменений (jsonb)
 - `ALTER TABLE core.* ENABLE ROW LEVEL SECURITY; ALTER TABLE core.* FORCE ROW LEVEL SECURITY;` — FORCE обязателен, иначе функции SECURITY DEFINER владельца обходят политики.
 - В политиках используется `session_user` (внутри SECURITY DEFINER `current_user` = владелец).
 - `core.contract`, `core.session`: оператор/руководитель — `provider_id = sec.current_provider_id()`; chief — все; admin — нет доступа.
-- `core.subscriber`: оператор/руководитель видят абонентов, у которых есть договор с их провайдером, плюс только что созданных ими (через `created_by`). Поиск дубликата абонента при заключении договора — отдельная функция `api.subscriber_find_exact(phone, name)`, возвращающая минимум полей.
+- `core.subscriber` (общий реестр, D25): оператор/руководитель видят абонента, если у их провайдера есть договор с ним (`EXISTS` договора с `provider_id = sec.current_provider_id()`); chief и admin — весь реестр (admin — без договоров и сеансов). Поиск дубликата — по точному наименованию и телефону во всём реестре (`api.subscriber_find_exact(name, phone)`), возвращает только тип и город; договор с найденным абонентом присоединяет его, а не создаёт копию (`api.contract_create`). Сведения реестра меняет оператор — только у абонента без договоров других провайдеров; общего абонента — admin; удалить общего абонента нельзя.
 - `core.provider`: все видят справочную карточку; изменять — только admin.
 - Проверка RLS — тестами в `db/tests/` с `SET SESSION AUTHORIZATION`.
 
@@ -51,13 +52,14 @@ schema audit — журнал изменений (jsonb)
 | Область | Функции | Группы |
 |---|---|---|
 | Сессия | `whoami()` | все |
-| Пользователи | `user_list`, `user_create(login, password, group, provider_id, full_name)`, `user_update`, `user_set_password`, `user_drop` | admin |
+| Пользователи | `q_users`, `user_create(login, full_name, group, provider_id)`, `user_set_login(login, enabled)`; план: `user_reset_password(login)`, `change_own_password(new)` (D27), `user_update` | admin — операторы, руководители, аналитики; dba — администраторы приложения (D26) |
+| База данных | `q_change_log(from, to, table, operation, db_user)`, `db_tables()`, `db_connections()` | dba |
 | Справочники | `ownership_type_*`, `city_*`, `subscriber_type_*`, `tariff_*` | admin (CRUD); остальным `*_lookup()` для выпадающих списков |
 | Провайдеры | `provider_list`, `provider_get`, `provider_create/update/delete` | admin CRUD; остальные list/get |
-| Абоненты | `subscriber_list`, `subscriber_get`, `subscriber_find_exact`, `subscriber_create/update/delete` | operator CRUD; manager/chief чтение |
-| Договоры | `contract_list(p_subscriber_id, p_active_only, …)`, `contract_get`, `contract_create/update/close/delete` | operator CRUD; manager/chief чтение |
+| Абоненты | `q_subscribers`, `v_subscribers`, `subscriber_find_exact`, `subscriber_update/delete` (абонент создаётся в `contract_create`) | operator — свои не общие; admin — изменение любого (D25); manager/chief чтение |
+| Договоры | `q_contracts(p_subscriber_id, p_active_only, …)`, `v_contracts`, `contract_create/update` (расторжение — `closed_on` в `contract_update`) | operator; manager/chief чтение |
 | Сеансы | `session_list(p_contract_id, p_from, p_to, …)`, `session_create(contract_id, started_at, volume_mb, tariff_id default null)`, `session_delete` | operator; manager/chief чтение |
-| Отчёты | `report_revenue(p_from, p_to, p_grain, p_provider_id)`, `report_traffic_by_tariff(…)`, `report_new_contracts(…)`, `report_top_subscribers(…)` | manager (свой провайдер), chief (все / фильтр) |
+| Отчёты | `report_revenue(p_from, p_to, p_grain, p_provider_id, p_subscriber_type_id)`, `report_provider_shares(…)` (chief), `q_tariff_usage(…)` (запрос 9), `report_new_contracts(…)`, `report_top_subscribers(…)` — план ЛР 6 (D28, `queries-plan.md`) | manager (свой провайдер), chief (все / фильтр) |
 | Запросы ЛР 5–6 | функции `q_*` с параметрами и представления `v_*` без параметров | manager, chief |
 
 Все функции: `SECURITY DEFINER`, `SET search_path = pg_catalog, pg_temp`, полностью квалифицированные имена объектов, первая строка тела — проверка группы.
@@ -97,6 +99,8 @@ schema audit — журнал изменений (jsonb)
 | Запросы (результаты запросов ЛР 5–6) | — | — | да | да |
 | Справочники | CRUD | — | — | — |
 | Пользователи (исключительная тематика админа) | CRUD | — | — | — |
+
+Администратор БД (D26): «Пользователи» (только администраторы приложения), «Журнал изменений», «Таблицы», «Подключения»; остальных страниц у него нет.
 
 Общие требования к клиенту:
 - Одна программа для всех ролей; одна страница на тему, инструменты по роли.

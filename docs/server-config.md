@@ -1,14 +1,18 @@
 # Конфигурация сервера (ЛР 1 → раздел 2 ПЗ)
 
-Заполняется после ЛР 1.
+Выполнено 30.09.2026 на компьютере студента (Claude через управление компьютером + pgAdmin 4).
 
 | Параметр | Значение | Обоснование |
 |---|---|---|
-| Версия PostgreSQL | | |
-| ОС, ОЗУ, ЦП, диск | | |
-| shared_buffers | | |
-| work_mem | | |
-| temp_buffers | | |
-| max_prepared_transactions | | |
-| max_files_per_process | | |
-| track_counts | on | нужен автовакууму и статистике |
+| Версия PostgreSQL | 18, служба `postgresql-x64-18`, порт 5432, data: `C:\Program Files\PostgreSQL\18\data` | PG 16 (порт 5433) не используется |
+| ОС | Windows 11 Pro 64-бит, сборка 26200 | |
+| ЦП | Intel Core i5-14600KF, 14 ядер / 20 потоков | |
+| ОЗУ | 32 ГБ (свободно при обычной нагрузке ≈ 10 ГБ) | ПК не выделенный сервер |
+| shared_buffers | 512MB (было 128MB) | Windows: рекомендовано 64–512 МБ + кэш ОС; ПК не выделенный, второй экземпляр СУБД |
+| work_mem | 64MB (было 4MB) | (10 ГБ/2 − 0,5 ГБ) / (35 запросов × 2 операции) ≈ 66 МБ → 64 МБ |
+| temp_buffers | 32MB (было 8MB) | верхняя граница 16–32 МБ |
+| max_prepared_transactions | 5 (было 0) | рекомендация методички; требует перезапуска |
+| max_files_per_process | 1000 (по умолчанию, задано явно) | ошибок «Too many open files» нет; пересмотреть в ЛР 8 |
+| track_counts | on | нужен autovacuum и pg_stat_* |
+
+Способ: `ALTER SYSTEM SET …` (пишет `postgresql.auto.conf`, т. к. запись в `postgresql.conf` в Program Files требует прав администратора) → `SELECT pg_reload_conf();` → перезапуск службы. Проверка: запрос к `pg_settings`, `pending_restart = false` у всех шести.

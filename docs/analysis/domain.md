@@ -1,6 +1,6 @@
 # Анализ предметной области (вариант Б-16)
 
-Статус: предварительный анализ, выполнен до ЛР 2. Окончательная модель фиксируется в ЛР 2 (`labs/lab02/`), изменения решений — в `docs/decisions.md`.
+Статус: предварительный анализ, выполнен до ЛР 2. Окончательная модель — `labs/lab02/model.md` (ЛР 2), изменения решений — в `docs/decisions.md`.
 
 ## 1. Что автоматизируется
 
@@ -10,7 +10,7 @@
 - договоры абонентов с провайдерами (один абонент может иметь несколько договоров, в том числе с разными провайдерами);
 - сеансы связи по договорам (дата/время, объём в Мб, тариф со скидкой).
 
-Кто пользуется системой (интерпретация, нужна для ролей): информационная система регионального объединения провайдеров. Сотрудники каждого провайдера ведут своих абонентов, договоры и сеансы; руководители провайдеров смотрят статистику по своей фирме; аналитический центр объединения видит сводку по всем провайдерам; администратор ведёт пользователей и справочники.
+Кто пользуется системой (интерпретация, нужна для ролей): информационная система регионального объединения провайдеров. Сотрудники каждого провайдера ведут договоры и сеансы своей фирмы и видят абонентов общего реестра, с которыми у фирмы есть договор (D25); руководители провайдеров смотрят статистику по своей фирме; аналитический центр объединения видит сводку по всем провайдерам; администратор ведёт пользователей и справочники.
 
 Основные процессы:
 1. Регистрация провайдера (администратор).
@@ -50,8 +50,8 @@
 | E3 | Тип абонента | `ref.subscriber_type` | справочник | администратор |
 | E4 | Тариф | `ref.tariff` | справочник | администратор вводит тариф со скидкой и временным окном |
 | E5 | Провайдер | `core.provider` | базовая | администратор регистрирует фирму |
-| E6 | Абонент | `core.subscriber` | базовая | оператор при первом обращении лица/организации |
-| E7 | Договор | `core.contract` | базовая (разрешает M:N провайдер–абонент) | оператор провайдера при подключении абонента |
+| E6 | Абонент | `core.subscriber` | базовая, общий реестр | оператор вместе с первым договором, если абонента ещё нет в реестре (D25) |
+| E7 | Договор | `core.contract` | базовая, таблица пересечения провайдер–абонент | оператор провайдера при подключении абонента; хранит адрес подключения и контакты |
 | E8 | Сеанс связи | `core.session` | базовая, самая большая, секционируется | каждый сеанс выхода в сеть по договору |
 
 Служебные (не из предметной области, нужны для требований курсовой):
@@ -66,41 +66,31 @@
 | R2 | E2 Город | E5 Провайдер | находится в | обязат. неидентиф. | 0..N | RESTRICT |
 | R3 | E2 Город | E6 Абонент | проживает/расположен в | обязат. неидентиф. | 0..N | RESTRICT |
 | R4 | E3 Тип абонента | E6 Абонент | классифицирует | обязат. неидентиф. | 0..N | RESTRICT |
-| R5 | E5 Провайдер | E7 Договор | заключает | обязат. неидентиф. | 0..N | RESTRICT (+ триггер-проверка) |
+| R5 | E5 Провайдер | E7 Договор | заключает | обязат. неидентиф. | 0..N | RESTRICT |
 | R6 | E6 Абонент | E7 Договор | заключает | обязат. неидентиф. | 0..N | CASCADE (тест каскадного удаления) |
 | R7 | E7 Договор | E8 Сеанс | включает | обязат. неидентиф. | 0..N | CASCADE |
 | R8 | E4 Тариф | E8 Сеанс | тарифицирует | обязат. неидентиф. | 0..N | RESTRICT |
 
-Провайдер ↔ Абонент — «многие-ко-многим», разрешается через Договор (у договора есть собственные атрибуты, поэтому это полноценная сущность, а не просто таблица пересечения).
+Провайдер и абонент связаны «многие ко многим» через Договор (D25, 2026-10-05): абонент — одна запись в общем реестре, сколько бы провайдеров его ни обслуживали. Вариант D17 (у каждого провайдера свои копии абонента, 2026-09-30) отменён: копии расходились.
 
-```mermaid
-erDiagram
-    OWNERSHIP_TYPE ||--o{ PROVIDER : "определяет"
-    CITY ||--o{ PROVIDER : "находится"
-    CITY ||--o{ SUBSCRIBER : "расположен"
-    SUBSCRIBER_TYPE ||--o{ SUBSCRIBER : "классифицирует"
-    PROVIDER ||--o{ CONTRACT : "заключает"
-    SUBSCRIBER ||--o{ CONTRACT : "заключает"
-    CONTRACT ||--o{ SESSION : "включает"
-    TARIFF ||--o{ SESSION : "тарифицирует"
-```
+Диаграмма таблиц — `docs/diagrams/er_logical.drawio` (draw.io).
 
 ## 5. Предварительная структура таблиц (уточняется в ЛР 2)
 
-Домены: `d_name` varchar(150) NOT NULL непустой; `d_phone` varchar(20) CHECK по маске `^\+?[0-9 ()-]{7,20}$`; `d_money` numeric(12,2) ≥ 0; `d_price_mb` numeric(10,4) > 0; `d_year` smallint 1970..текущий; `d_percent` numeric(5,2) 0..100; `d_mb` numeric(12,3) > 0.
+Домены: `d_name` varchar(150) NOT NULL непустой; `d_phone` varchar(20) CHECK через `translate()` — только цифры, пробел, скобки, дефис, «+» в начале, не меньше 7 цифр (D24); `d_money` numeric(12,2) ≥ 0; `d_price_mb` numeric(10,4) > 0; `d_year` smallint 1970..текущий; `d_percent` numeric(5,2) 0..100; `d_mb` numeric(12,3) > 0.
 
 | Таблица | Поля |
 |---|---|
 | `ref.ownership_type` | `id` smallint identity PK; `name` d_name UNIQUE |
 | `ref.city` | `id` int identity PK; `name` d_name UNIQUE |
 | `ref.subscriber_type` | `id` smallint identity PK; `name` UNIQUE; `is_legal` boolean |
-| `ref.tariff` | `id` smallint identity PK; `name` UNIQUE; `discount_pct` d_percent; `time_from` time; `time_to` time; `weekend` boolean; `description` text NULL |
+| `ref.tariff` | `id` smallint identity PK; `code` varchar(3) UNIQUE (D20); `name` UNIQUE; `discount_pct` d_percent; `time_from` time; `time_to` time; `is_weekend` boolean; `description` text NULL |
 | `core.provider` | `id` int identity PK; `name` UNIQUE; `ownership_type_id` FK; `city_id` FK; `address`; `phone` d_phone; `founded_year` d_year |
-| `core.subscriber` | `id` int identity PK; `name`; `subscriber_type_id` FK; `city_id` FK; `address`; `phone` d_phone; `created_by` name DEFAULT session_user (для RLS, D5) |
-| `core.contract` | `id` int identity PK; `provider_id` FK; `contract_no` varchar(20), UNIQUE(provider_id, contract_no); `subscriber_id` FK; `connected_on` date; `connection_fee` d_money; `price_per_mb` d_price_mb; `ip_address` inet; `closed_on` date NULL; `row_version` int (оптимистическая блокировка); номер договора по умолчанию из `core.contract_no_seq` (D12) |
+| `core.subscriber` | `id` int identity PK; `name`; `city_id` FK; `subscriber_type_id` FK; `address`; `phone` d_phone; `row_version` int; UNIQUE (`lower(name)`, цифры `phone`) — без дублей в реестре (D25) |
+| `core.contract` | `id` int identity PK; `provider_id` FK; `contract_no` varchar(20), UNIQUE(provider_id, contract_no); `subscriber_id` FK; `connected_on` date; `connection_fee` d_money; `price_per_mb` d_price_mb; `ip_address` inet; `connection_address` d_address; `contact_phone` d_phone NULL; `contact_person` d_name NULL; `closed_on` date NULL; `note` text NULL; `row_version` int (оптимистическая блокировка); номер договора по умолчанию из `core.contract_no_seq` (D12) |
 | `core.session` | `id` bigint identity; `contract_id` FK; `started_at` timestamptz; `volume_mb` d_mb; `tariff_id` FK; `discount_pct` d_percent (снимок); `cost` d_money (снимок); PK(`id`, `started_at`); PARTITION BY RANGE(`started_at`) |
 
-Индексы-кандидаты: `contract(provider_id)`, `contract(subscriber_id)`, `contract(connected_on)`, `session(contract_id, started_at)`, `session(started_at)` (ключ секционирования), `subscriber(lower(name) text_pattern_ops)` для поиска по маске, частичный уникальный `contract(provider_id, ip_address) WHERE closed_on IS NULL`.
+Индексы-кандидаты: `contract(provider_id, connected_on)`, `contract(subscriber_id, provider_id)` (видимость абонента провайдеру), `session(contract_id, started_at)`, `session(started_at)` (ключ секционирования), уникальный `subscriber(lower(name) text_pattern_ops, цифры phone)` — без дублей и для поиска по началу наименования, частичный уникальный `contract(provider_id, ip_address) WHERE closed_on IS NULL`.
 
 ## 6. Ограничения целостности (явные)
 
@@ -137,7 +127,7 @@ erDiagram
 
 | № | Вопрос | Рекомендация |
 |---|---|---|
-| Q1 | IP-адрес — у абонента или у договора? | У договора (D1). Обоснование: абонент с двумя договорами у разных провайдеров имеет два IP; иначе нарушается 3НФ/смысл. |
+| Q1 | IP-адрес — у абонента или у договора? | У договора (D1). Обоснование: у абонента может быть несколько договоров (точек подключения) со своими IP; иначе атрибут многозначен. |
 | Q2 | Тариф выбирается вручную или по времени сеанса? | По времени через триггер, с возможностью указать явно (D2). |
 | Q3 | Хранить ли стоимость сеанса? | Да, снимок скидки и стоимости — осознанная денормализация (D3): иначе изменение справочника тарифов «переписывает» прошлую выручку. |
 | Q4 | Город — справочник? | Да (D4): нужен для фильтров статистики и даёт ещё один справочник. |

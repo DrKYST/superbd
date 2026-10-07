@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Абоненты</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#333333;font-size:13px}
+a{color:#1a5ba6;text-decoration:none}a:hover{color:#10407a;text-decoration:underline}
+.win{width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden;font-size:13px;border:1px solid #8c8c8c;box-sizing:border-box}
+.cap{height:30px;flex-shrink:0;background:#ffffff;border-bottom:1px solid #d4d4d4;display:flex;align-items:center;gap:8px;padding-left:10px;font-size:12.5px}
+.appico{width:16px;height:16px;background:#d9a400;border:1px solid #9c7600;color:#ffffff;font-size:10px;font-weight:bold;display:flex;align-items:center;justify-content:center}
+.wb{width:46px;height:30px;border:0;background:transparent;font:inherit;font-size:15px;color:#333333}
+.secbar{height:64px;flex-shrink:0;background:#f5f5f5;border-bottom:1px solid #c9c9c9;display:flex;align-items:stretch;padding:0 4px}
+.sec{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:112px;color:#333333;font-size:11.5px;text-align:center;line-height:1.15;text-decoration:none;border:1px solid transparent;box-sizing:border-box;padding:0 4px}
+.sec:hover{text-decoration:none;background:#ebebeb;color:#333333}
+.sec.on{background:#fcefbf;border-color:#e0c255}
+.secright{margin-left:auto;display:flex;align-items:center;gap:6px;padding-right:12px;font-size:12px;color:#4d4d4d}
+.navp{width:208px;flex-shrink:0;border-right:1px solid #d6d6d6;background:#ffffff;padding:6px 0;box-sizing:border-box}
+.navg{font-weight:bold;color:#4d4d4d;font-size:12.5px;padding:10px 12px 3px}
+.navl{display:block;padding:3px 12px 3px 20px;font-size:13px}
+.navl.on{font-weight:bold;color:#333333;background:#efefef}
+.work{flex-grow:1;display:flex;flex-direction:column;min-width:0}
+.tabs{height:27px;flex-shrink:0;background:#e9e9e9;border-bottom:1px solid #bdbdbd;display:flex;align-items:flex-end;gap:2px;padding:0 6px}
+.tab{height:22px;padding:0 10px;display:flex;align-items:center;gap:8px;font-size:12px;background:#dcdcdc;border:1px solid #bdbdbd;border-bottom:0;color:#333333;white-space:nowrap}
+.tab.on{background:#ffffff;height:25px;font-weight:bold}
+.tab .x{color:#8a8a8a;font-weight:normal}
+.form{flex-grow:1;display:flex;flex-direction:column;padding:8px 14px 10px;gap:7px;min-height:0}
+.ftitle{font-size:19px;color:#4d4d4d;margin:0;font-weight:normal}
+.ftitle small{font-size:13px;color:#8a8a8a}
+.cb{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.b{height:24px;padding:0 9px;border:1px solid #b3b3b3;border-radius:3px;background:linear-gradient(#ffffff,#e8e8e8);font:inherit;font-size:12.5px;color:#333333;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;text-decoration:none;box-sizing:border-box}
+.b:hover{text-decoration:none;color:#333333;border-color:#8c8c8c}
+.b.def{background:linear-gradient(#fff6cc,#f2cf4f);border-color:#b8900c;font-weight:bold}
+.b[disabled]{color:#9a9a9a}
+.sep{width:1px;height:20px;background:#cccccc;margin:0 3px}
+.l{color:#4d4d4d;font-size:12.5px;white-space:nowrap}
+.i{height:22px;border:1px solid #a6a6a6;border-radius:2px;padding:0 5px;font:inherit;font-size:12.5px;background:#ffffff;color:#333333;box-sizing:border-box}
+.i[readonly]{background:#f3f3f3}
+.pick{width:22px;height:22px;border:1px solid #a6a6a6;border-left:0;background:linear-gradient(#ffffff,#e8e8e8);font:inherit;font-size:11px;padding:0;color:#333333;box-sizing:border-box}
+.row{display:flex;align-items:center;gap:6px}
+.grid{border:1px solid #b8b8b8;background:#ffffff;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.g{display:table;width:100%;border-collapse:collapse;font-size:12.5px}
+.thead{display:table-header-group}
+.tbody{display:table-row-group}
+.tr{display:table-row}
+.th,.td{display:table-cell;vertical-align:middle}
+.g .th{height:23px;background:linear-gradient(#fafafa,#e6e6e6);border-right:1px solid #cccccc;border-bottom:1px solid #b8b8b8;text-align:left;font-weight:normal;color:#333333;padding:0 6px;white-space:nowrap}
+.g .td{height:22px;border-right:1px solid #e2e2e2;border-bottom:1px solid #e2e2e2;padding:0 6px;white-space:nowrap}
+.g .tr.cur .td{background:#fbe7a1}
+.g .tr.tot .td{background:#f2f2f2;font-weight:bold}
+.g .tr.grp .td{background:#f7f3e3;font-weight:bold}
+.g .r{text-align:right}
+.g .c{text-align:center}
+.gcap{height:22px;display:flex;align-items:center;gap:6px;font-weight:bold;color:#4d4d4d;font-size:12.5px;flex-shrink:0}
+.pg{height:27px;border-top:1px solid #d4d4d4;display:flex;align-items:center;gap:6px;padding:0 6px;font-size:12px;color:#444444;background:#f5f5f5;flex-shrink:0;margin-top:auto}
+.st{height:22px;flex-shrink:0;background:#efefef;border-top:1px solid #c9c9c9;display:flex;align-items:center;gap:16px;padding:0 10px;font-size:11.5px;color:#4d4d4d}
+.hint{font-size:12px;color:#666666}
+fieldset{border:1px solid #cfcfcf;margin:0;padding:6px 10px 9px}
+legend{color:#4d4d4d;font-size:12.5px;padding:0 4px}
+.okt{color:#2c7a2c}
+.bad{color:#b02a2a}
+.blk{border:1px solid #d0d0d0;background:#ffffff;display:flex;flex-direction:column}
+.blkh{height:26px;flex-shrink:0;background:linear-gradient(#fafafa,#ececec);border-bottom:1px solid #d0d0d0;padding:0 10px;font-weight:bold;color:#4d4d4d;display:flex;align-items:center;font-size:12.5px}
+.blkb{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.kbd{display:inline-block;min-width:22px;padding:0 5px;border:1px solid #b3b3b3;border-radius:3px;background:linear-gradient(#ffffff,#ececec);font-size:11.5px;text-align:center;line-height:18px}
+ul.li{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+
+</style>
+</helmet>
+<div class="win">
+<div class="cap"><span class="appico">С</span><span>СуперБД: Учёт услуг связи интернет-провайдеров</span><span style="color: #7a7a7a">({{u.fio}}, {{u.role}})</span><span style="margin-left: auto; display: flex"><button class="wb" type="button" aria-label="Свернуть">–</button><button class="wb" type="button" aria-label="Развернуть">□</button><button class="wb" type="button" aria-label="Закрыть">×</button></span></div>
+<nav class="secbar" aria-label="Разделы">
+<sc-for list="{{secs}}" as="s" hint-placeholder-count="4">
+<a class="sec {{s.on}}" href="{{s.href}}"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2f65a0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{s.icon}}"></path></svg>{{s.name}}</a>
+</sc-for>
+<div class="secright"><span>{{u.login}}</span><span style="color: #9a9a9a">|</span><a href="Main.dc.html">Выйти</a></div>
+</nav>
+<div style="flex-grow: 1; display: flex; min-height: 0">
+<nav class="navp" aria-label="Панель навигации">
+<sc-for list="{{nav}}" as="g" hint-placeholder-count="2">
+<div class="navg">{{g.title}}</div>
+<sc-for list="{{g.links}}" as="k" hint-placeholder-count="3"><a class="navl {{k.on}}" href="{{k.href}}">{{k.name}}</a></sc-for>
+</sc-for>
+</nav>
+<div class="work">
+<div class="tabs"><sc-for list="{{tabs}}" as="t" hint-placeholder-count="2"><span class="tab {{t.on}}">{{t.name}}<span class="x">×</span></span></sc-for></div>
+<div class="form">
+
+<h1 class="ftitle">Абоненты <small>{{ro}}</small></h1>
+<div class="cb">
+<sc-if value="{{canEdit}}" hint-placeholder-val="{{ true }}">
+<button class="b def" type="button">Создать</button><button class="b" type="button">Изменить</button><button class="b" type="button">Удалить</button><span class="sep"></span><a class="b" href="ContractDialog.dc.html">Новый договор…</a><span class="sep"></span>
+</sc-if>
+<button class="b" type="button">Найти…</button><button class="b" type="button">Отменить поиск</button>
+<span style="margin-left: auto" class="row"><input class="i" type="search" aria-label="Поиск" placeholder="Поиск (Ctrl+F)" style="width: 220px"><button class="b" type="button">Еще ▾</button></span>
+</div>
+<div class="row" style="flex-shrink: 0"><label class="l" for="ft">Тип абонента:</label><select id="ft" class="i" style="width: 190px"><option>&lt;все&gt;</option><option>Частное лицо</option><option>Школа</option></select><span style="width: 16px"></span><label class="row l"><input type="checkbox" checked="{{ true }}">Только с действующими договорами</label><span class="hint" style="margin-left: auto">Показаны абоненты с договорами ООО «Степной провод»</span></div>
+<div class="grid" style="height: 318px; flex-shrink: 0">
+<div class="g" role="table">
+<div class="thead" role="rowgroup"><div class="tr" role="row"><div class="th" style="width: 290px" role="columnheader">Наименование</div><div class="th" role="columnheader">Тип абонента</div><div class="th" role="columnheader">Город</div><div class="th" role="columnheader">Физический адрес</div><div class="th" role="columnheader">Телефон</div><div class="th r" role="columnheader">Договоров</div></div></div>
+<div class="tbody" role="rowgroup"><sc-for list="{{subs}}" as="s" hint-placeholder-count="11"><div class="tr {{s.cls}}" role="row"><div class="td" role="cell">{{s.name}}</div><div class="td" role="cell">{{s.type}}</div><div class="td" role="cell">{{s.city}}</div><div class="td" role="cell">{{s.addr}}</div><div class="td" role="cell">{{s.tel}}</div><div class="td r" role="cell">{{s.n}}</div></div></sc-for></div>
+</div>
+<div class="pg"><span>Показывать по:</span><select class="i" aria-label="Строк на странице" style="width: 58px"><option>20</option><option>100</option><option>200</option></select><span class="sep"></span><button class="b" type="button" aria-label="Первая страница">|◄</button><button class="b" type="button" aria-label="Предыдущая страница">◄</button><span>Страница</span><input class="i" aria-label="Номер страницы" value="1" style="width: 40px; text-align: center"><span>из 56</span><button class="b" type="button" aria-label="Следующая страница">►</button><button class="b" type="button" aria-label="Последняя страница">►|</button><span style="margin-left: auto">Записи 1–20 из 1 116</span></div>
+</div>
+<div style="flex-grow: 1; display: flex; gap: 12px; min-height: 0">
+<div style="width: 640px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px">
+<div class="gcap">Договоры абонента «МБОУ «Школа № 17 г. Макеевки»»</div>
+<sc-if value="{{canEdit}}" hint-placeholder-val="{{ true }}"><div class="cb"><a class="b" href="ContractDialog.dc.html">Добавить</a><button class="b" type="button">Изменить</button><button class="b" type="button">Расторгнуть</button></div></sc-if>
+<div class="grid" style="flex-grow: 1">
+<div class="g" role="table">
+<div class="thead" role="rowgroup"><div class="tr" role="row"><div class="th" role="columnheader">Номер</div><div class="th" role="columnheader">Дата подкл.</div><div class="th r" role="columnheader">Подключение, руб.</div><div class="th r" role="columnheader">1 Мб, руб.</div><div class="th" role="columnheader">IP-адрес</div><div class="th" role="columnheader">Состояние</div></div></div>
+<div class="tbody" role="rowgroup"><sc-for list="{{contracts}}" as="c" hint-placeholder-count="2"><div class="tr {{c.cls}}" role="row"><div class="td" role="cell">{{c.no}}</div><div class="td" role="cell">{{c.date}}</div><div class="td r" role="cell">{{c.fee}}</div><div class="td r" role="cell">{{c.mb}}</div><div class="td" role="cell">{{c.ip}}</div><div class="td {{c.stc}}" role="cell">{{c.st}}</div></div></sc-for></div>
+</div>
+</div>
+</div>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<div class="gcap">Сеансы по договору Д-2024-000318 за сентябрь 2026<a href="{{sessHref}}" style="margin-left: auto; font-weight: normal">Все сеансы договора</a></div>
+<div class="grid" style="flex-grow: 1">
+<div class="g" role="table">
+<div class="thead" role="rowgroup"><div class="tr" role="row"><div class="th" role="columnheader">Начало сеанса</div><div class="th" role="columnheader">Тариф</div><div class="th r" role="columnheader">Объём, Мб</div><div class="th r" role="columnheader">Скидка, %</div><div class="th r" role="columnheader">Стоимость, руб.</div></div></div>
+<div class="tbody" role="rowgroup"><sc-for list="{{sessions}}" as="s" hint-placeholder-count="6"><div class="tr" role="row"><div class="td" role="cell">{{s.t}}</div><div class="td" role="cell">{{s.tar}}</div><div class="td r" role="cell">{{s.mb}}</div><div class="td r" role="cell">{{s.d}}</div><div class="td r" role="cell">{{s.c}}</div></div></sc-for>
+<div class="tr tot" role="row"><div class="td" role="cell">Итого: 6</div><div class="td" role="cell"></div><div class="td r" role="cell">8 672,650</div><div class="td" role="cell"></div><div class="td r" role="cell">250,60</div></div></div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+<div class="st"><span>База: superbd на 127.0.0.1:5432</span><span>Пользователь: {{u.login}} ({{u.grp}})</span><span style="margin-left: auto">30.09.2026</span></div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"role": {"editor": "enum", "options": ["operator", "manager"], "default": "operator"}, "$preview": {"width": 1440, "height": 900}}'>
+class Component extends DCLogic {
+
+  shell(role, section, tabs) {
+    const IC = {
+      users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+      book: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14zM20 17v4H6.5A2.5 2.5 0 0 1 4 18.5',
+      building: 'M3 21h18M5 21V5l7-3v19M19 21V9l-7-3M9 9h.01M9 13h.01M9 17h.01M15 13h.01M15 17h.01',
+      card: 'M3 5h18v14H3zM8 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 17c.5-2 1.8-3 3-3s2.5 1 3 3M14 9h5M14 13h5',
+      activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
+      chart: 'M3 3v18h18M8 17v-6M13 17V7M18 17v-4',
+      table: 'M3 4h18v16H3zM3 10h18M9 4v16',
+      home: 'M3 11l9-8 9 8M5 10v10h14V10'
+    };
+    const S = {
+      admin: [['Главное', 'home', 'Home_Admin.dc.html'], ['Администри­рование', 'users', 'Users.dc.html'], ['Справочники', 'book', 'Refs.dc.html'], ['Провайдеры', 'building', 'Providers.dc.html']],
+      operator: [['Главное', 'home', 'Home.dc.html'], ['Абоненты и договоры', 'card', 'Subscribers.dc.html'], ['Сеансы связи', 'activity', 'Sessions.dc.html'], ['Мой провайдер', 'building', '#']],
+      manager: [['Главное', 'home', 'Home_Manager.dc.html'], ['Абоненты и договоры', 'card', 'Subscribers_Manager.dc.html'], ['Сеансы связи', 'activity', '#'], ['Статистика', 'chart', 'Stats.dc.html'], ['Запросы', 'table', 'Queries.dc.html'], ['Мой провайдер', 'building', '#']],
+      chief: [['Главное', 'home', 'Home_Chief.dc.html'], ['Провайдеры', 'building', '#'], ['Абоненты и договоры', 'card', '#'], ['Сеансы связи', 'activity', '#'], ['Статистика', 'chart', 'Stats_Chief.dc.html'], ['Запросы', 'table', '#']]
+    };
+    const U = {
+      admin: { full: 'Шевченко Ирина Олеговна', fio: 'Шевченко И. О.', role: 'администратор', login: 'adm_main', grp: 'grp_admin' },
+      operator: { full: 'Ковалёва Марина Игоревна', fio: 'Ковалёва М. И.', role: 'оператор, ООО «Степной провод»', login: 'op_stepnoy1', grp: 'grp_operator' },
+      manager: { full: 'Гордеев Олег Викторович', fio: 'Гордеев О. В.', role: 'руководитель, ООО «Степной провод»', login: 'mgr_stepnoy', grp: 'grp_manager' },
+      chief: { full: 'Литвиненко Андрей Павлович', fio: 'Литвиненко А. П.', role: 'главный аналитик', login: 'chief_main', grp: 'grp_chief' }
+    };
+    return {
+      u: U[role],
+      secs: S[role].map(([name, ic, href]) => ({ name, icon: IC[ic], href, on: name === section ? 'on' : '' })),
+      tabs: tabs.map((t, i) => ({ name: t, on: i === tabs.length - 1 ? 'on' : '' }))
+    };
+  }
+  fmt(n, d) {
+    return Number(n).toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+
+
+  renderVals() {
+
+    const role = this.props.role ?? 'operator';
+    const canEdit = role === 'operator';
+    const subs = [
+      ['Бондаренко Алексей Сергеевич', 'Частное лицо', 'Донецк', 'ул. Университетская, 52, кв. 17', '+7 (949) 405-11-26', '1'],
+      ['МБОУ «Школа № 17 г. Макеевки»', 'Школа', 'Макеевка', 'ул. Ленинградская, 14', '+7 (949) 312-45-78', '2'],
+      ['ООО «Агроснаб-Юг»', 'Предприятие', 'Донецк', 'пр. Мира, 8, оф. 12', '+7 (856) 311-70-44', '3'],
+      ['Мельник Оксана Петровна', 'Частное лицо', 'Горловка', 'ул. Пушкинская, 3, кв. 40', '+7 (949) 218-60-35', '1'],
+      ['ИП Ткаченко Виктор Николаевич', 'Индивидуальный предприниматель', 'Енакиево', 'ул. Щербакова, 21', '+7 (949) 700-14-82', '1'],
+      ['Колледж информационных технологий', 'Колледж', 'Донецк', 'ул. Кобозева, 17', '+7 (856) 304-22-10', '2'],
+      ['Кравец Дмитрий Андреевич', 'Частное лицо', 'Харцызск', 'ул. Октябрьская, 9', '+7 (949) 591-03-77', '1'],
+      ['Городская библиотека № 3', 'Библиотека', 'Макеевка', 'ул. Свердлова, 5', '+7 (856) 322-15-09', '1'],
+      ['Интернет-кафе «Байт»', 'Интернет-кафе', 'Донецк', 'б-р Шевченко, 30', '+7 (949) 333-90-01', '1'],
+      ['Савченко Людмила Викторовна', 'Частное лицо', 'Ясиноватая', 'ул. Орджоникидзе, 44, кв. 2', '+7 (949) 268-47-15', '1'],
+      ['Руденко Павел Ильич', 'Частное лицо', 'Донецк', 'ул. Артёма, 99, кв. 81', '+7 (949) 377-52-64', '1']
+    ].map(([name, type, city, addr, tel, n], i) => ({ name, type, city, addr, tel, n, cls: i === 1 ? 'cur' : '' }));
+    const contracts = [
+      { no: 'Д-2024-000318', date: '12.02.2024', fee: '1 500,00', mb: '0,0450', ip: '10.24.3.17', st: 'Действует', stc: 'okt', cls: 'cur' },
+      { no: 'Д-2025-001204', date: '03.09.2025', fee: '800,00', mb: '0,0520', ip: '10.24.7.40', st: 'Расторгнут 31.03.2026', stc: '', cls: '' }
+    ];
+    const sessions = [
+      ['29.09.2026 10:14', 'Бизнес-время', '812,400', '0', '36,56'],
+      ['28.09.2026 19:42', 'Вечерний', '1 240,000', '20', '44,64'],
+      ['28.09.2026 01:05', 'Ночной', '3 050,500', '50', '68,64'],
+      ['27.09.2026 12:30', 'Выходной дневной', '2 210,000', '30', '69,62'],
+      ['26.09.2026 14:10', 'Образовательный', '954,000', '70', '12,88'],
+      ['25.09.2026 15:20', 'Бизнес-время', '405,750', '0', '18,26']
+    ].map(([t, tar, mb, d, c]) => ({ t, tar, mb, d, c }));
+    const nav = canEdit
+      ? [{ title: 'Абоненты и договоры', links: [{ name: 'Абоненты', href: '#', on: 'on' }, { name: 'Договоры', href: '#', on: '' }] },
+         { title: 'Создать', links: [{ name: 'Абонент', href: '#', on: '' }, { name: 'Договор', href: 'ContractDialog.dc.html', on: '' }] },
+         { title: 'См. также', links: [{ name: 'Сеансы связи', href: 'Sessions.dc.html', on: '' }, { name: 'Тарифы', href: '#', on: '' }] }]
+      : [{ title: 'Абоненты и договоры', links: [{ name: 'Абоненты', href: '#', on: 'on' }, { name: 'Договоры', href: '#', on: '' }] },
+         { title: 'См. также', links: [{ name: 'Сеансы связи', href: '#', on: '' }, { name: 'Статистика', href: 'Stats.dc.html', on: '' }] }];
+    return {
+      ...this.shell(role, 'Абоненты и договоры', ['Начальная страница', 'Абоненты']),
+      nav, canEdit, ro: canEdit ? '' : '(только просмотр)', sessHref: canEdit ? 'Sessions.dc.html' : '#', subs, contracts, sessions
+    };
+
+  }
+}
+</script>
+</body>
+</html>

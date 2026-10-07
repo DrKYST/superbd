@@ -1,0 +1,149 @@
+# Модель БД для генерации ER-диаграммы draw.io (ЛР 2).
+#   python tools/drawio/er2drawio.py docs/diagrams/er_model.yaml
+# Результат: docs/diagrams/er_logical.drawio (контрастный ЧБ стиль, подписи на русском).
+# После ЛР 3 модель сверяется с фактической схемой БД (information_schema).
+#
+# cols: [ключ, колонка, тип на диаграмме, русское название]
+#   ключ PK — строка жирным в верхней секции таблицы; FK/AK на диаграмме не подписываются
+#   (они описаны в labs/lab02/model.md), колонка нужна для привязки линий связей.
+#   Тип — базовый тип PostgreSQL (домен раскрыт: d_name → varchar(150) и т. д.).
+# pos — левый верхний угол таблицы. Родитель связи всегда левее потомка:
+#   стиль entityRelationEdgeStyle ведёт линии по горизонтали от строки к строке.
+
+tables:
+  - name: ref.ownership_type
+    title: Тип собственности
+    pos: [40, 40]
+    cols:
+      - [PK, id, smallint, Код]
+      - [AK, name, varchar(150), Название]
+
+  - name: ref.city
+    title: Город
+    pos: [40, 200]
+    cols:
+      - [PK, id, integer, Код]
+      - [AK, name, varchar(150), Название]
+
+  - name: ref.subscriber_type
+    title: Тип абонента
+    pos: [40, 360]
+    cols:
+      - [PK, id, smallint, Код]
+      - [AK, name, varchar(150), Название]
+      - ["", is_legal, boolean, Юридическое лицо]
+
+  - name: core.provider
+    title: Провайдер
+    pos: [420, 40]
+    cols:
+      - [PK, id, integer, Код]
+      - [AK, name, varchar(150), Название]
+      - [FK, ownership_type_id, smallint, Тип собственности]
+      - [FK, city_id, integer, Город]
+      - ["", address, varchar(200), Адрес]
+      - ["", phone, varchar(20), Телефон]
+      - ["", founded_year, smallint, Год начала работы]
+
+  - name: core.subscriber
+    title: Абонент
+    pos: [420, 330]
+    cols:
+      - [PK, id, integer, Код]
+      - ["", name, varchar(150), ФИО или название]
+      - [FK, city_id, integer, Город]
+      - [FK, subscriber_type_id, smallint, Тип абонента]
+      - ["", address, varchar(200), Физический адрес]
+      - ["", phone, varchar(20), Телефон]
+      - ["", row_version, integer, Версия строки]
+
+  - name: core.contract
+    title: Договор
+    pos: [800, 40]
+    cols:
+      - [PK, id, integer, Код]
+      - [FK, provider_id, integer, Провайдер]
+      - [AK, contract_no, varchar(20), Номер договора]
+      - [FK, subscriber_id, integer, Абонент]
+      - ["", connected_on, date, Дата подключения]
+      - ["", connection_fee, "numeric(12,2)", Стоимость подключения]
+      - ["", price_per_mb, "numeric(10,4)", Стоимость 1 Мб]
+      - ["", ip_address, inet, IP-адрес]
+      - ["", connection_address, varchar(200), Адрес подключения]
+      - ["", contact_phone, varchar(20), Контактный телефон]
+      - ["", contact_person, varchar(150), Контактное лицо]
+      - ["", closed_on, date, Дата расторжения]
+      - ["", note, text, Комментарий]
+      - ["", row_version, integer, Версия строки]
+
+  - name: ref.tariff
+    title: Тариф
+    pos: [800, 460]
+    cols:
+      - [PK, id, smallint, Код]
+      - [AK, code, varchar(3), Обозначение]
+      - [AK, name, varchar(150), Название]
+      - ["", discount_pct, "numeric(5,2)", "Скидка, %"]
+      - ["", time_from, time, Начало действия]
+      - ["", time_to, time, Окончание действия]
+      - ["", is_weekend, boolean, Выходные дни]
+      - ["", description, text, Описание]
+
+  - name: core.session
+    title: Сеанс связи
+    pos: [1180, 160]
+    cols:
+      - [PK, id, bigint, Код]
+      - [PK, started_at, timestamptz, Дата и время сеанса]
+      - [FK, contract_id, integer, Договор]
+      - [FK, tariff_id, smallint, Тариф]
+      - ["", volume_mb, "numeric(12,3)", Количество Мб]
+      - ["", discount_pct, "numeric(5,2)", "Скидка, %"]
+      - ["", cost, "numeric(12,2)", Стоимость сеанса]
+
+  - name: sec.app_user
+    title: Сотрудник
+    pos: [800, 700]
+    cols:
+      - [PK, id, integer, Код]
+      - [FK, provider_id, integer, Провайдер]
+      - [AK, login, varchar(31), Логин PostgreSQL]
+      - ["", full_name, varchar(150), ФИО]
+      - ["", created_at, timestamptz, Дата регистрации]
+
+  - name: audit.change_log
+    title: Журнал изменений
+    pos: [1180, 440]
+    cols:
+      - [PK, id, bigint, Код]
+      - ["", changed_at, timestamptz, Дата и время изменения]
+      - ["", db_user, varchar(63), Пользователь БД]
+      - ["", table_name, varchar(63), Таблица]
+      - ["", operation, varchar(6), Операция]
+      - ["", row_pk, text, Ключ строки]
+      - ["", old_row, jsonb, Строка до изменения]
+      - ["", new_row, jsonb, Строка после изменения]
+
+# Колонки, которые не рисуются: суррогатный PK «Код» (id) есть у каждой таблицы по умолчанию,
+# линии связей в этом случае ведут к таблице-родителю.
+hide_columns: [id]
+
+# Связи: потомок.FK -> родитель.PK. Мощность: родитель ровно один (optional: true — ноль или один), потомок 0..N.
+relations:
+  - {id: R1, child: core.provider,   fk: ownership_type_id,  parent: ref.ownership_type}
+  - {id: R2, child: core.provider,   fk: city_id,            parent: ref.city}
+  - {id: R3, child: core.subscriber, fk: city_id,            parent: ref.city}
+  - {id: R4, child: core.subscriber, fk: subscriber_type_id, parent: ref.subscriber_type}
+  # D25: общий реестр абонентов; договор — пересечение провайдера и абонента (M:N через договор).
+  - {id: R5, child: core.contract,   fk: provider_id,        parent: core.provider}
+  - {id: R6, child: core.contract,   fk: subscriber_id,      parent: core.subscriber}
+  - {id: R7, child: core.session,    fk: contract_id,        parent: core.contract}
+  - {id: R8, child: core.session,    fk: tariff_id,          parent: ref.tariff}
+  - {id: R9, child: sec.app_user,    fk: provider_id,        parent: core.provider, optional: true}
+
+legend: |
+  У каждой таблицы есть первичный ключ «Код» (id, целое, генерируется СУБД) — на диаграмме не показан; внешний ключ ссылается на код таблицы-родителя.
+  Жирным над линией — поля, входящие в первичный ключ вместе с кодом.
+  Со стороны родителя: две черты — «ровно один», кружок с чертой — «ноль или один» (внешний ключ может быть пустым).
+  Со стороны потомка: кружок с «вороньей лапкой» — «ноль или много».
+  Журнал изменений не связан внешними ключами: записи журнала сохраняются после удаления строк.

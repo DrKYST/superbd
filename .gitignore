@@ -1,7 +1,8 @@
-client/build/
+client/build*/
 client/config.ini
 CLAUDE.local.md
 *.pyc
 __pycache__/
 ~$*.docx
 .env
+db/*.log
