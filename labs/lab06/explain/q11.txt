@@ -15,49 +15,65 @@ SELECT title, group_name, users FROM api.v_user_groups;
  Операторы                 | grp_operator |     3
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 2.576 ms  plan:
+duration: 0.016 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 3.571 ms  plan:
 Query Text: SELECT title, group_name, users FROM api.v_user_groups;
-Subquery Scan on v_user_groups  (cost=7.61..7.64 rows=2 width=72) (actual rows=5.00 loops=1)
-  Buffers: shared hit=207
-  ->  Sort  (cost=7.61..7.62 rows=2 width=144) (actual rows=5.00 loops=1)
-        Sort Key: (GROUPING(pg_authid_1.rolname)) DESC, (array_position('{grp_dba,grp_admin,grp_chief,grp_manager,grp_operator}'::name[], pg_authid_1.rolname))
+Subquery Scan on v_user_groups  (cost=7.88..7.90 rows=2 width=72) (actual rows=5.00 loops=1)
+  Buffers: shared hit=416
+  ->  Sort  (cost=7.88..7.88 rows=2 width=140) (actual rows=5.00 loops=1)
+        Sort Key: (CASE WHEN (GROUPING(pg_authid_1.rolname) = 1) THEN 0 ELSE array_position('{grp_dba,grp_admin,grp_chief,grp_manager,grp_operator}'::name[], pg_authid_1.rolname) END)
         Sort Method: quicksort  Memory: 25kB
-        Buffers: shared hit=207
+        Buffers: shared hit=416
         InitPlan 1
           ->  Result  (cost=0.00..0.51 rows=1 width=32) (actual rows=1.00 loops=1)
-                Buffers: shared hit=200
-        ->  MixedAggregate  (cost=3.99..7.09 rows=2 width=144) (actual rows=5.00 loops=1)
+                Buffers: shared hit=174
+        InitPlan 2
+          ->  Result  (cost=0.00..0.26 rows=1 width=1) (actual rows=1.00 loops=1)
+                Buffers: shared hit=235
+        ->  MixedAggregate  (cost=3.99..7.10 rows=2 width=140) (actual rows=5.00 loops=1)
               Hash Key: pg_authid_1.rolname
               Group Key: ()
               Batches: 1  Memory Usage: 32kB
-              Buffers: shared hit=204
-              ->  Hash Join  (cost=3.99..6.53 rows=1 width=64) (actual rows=6.00 loops=1)
-                    Hash Cond: (pg_authid_1.oid = m.roleid)
-                    Buffers: shared hit=204
-                    ->  Seq Scan on pg_authid pg_authid_1  (cost=0.00..2.50 rows=9 width=72) (actual rows=4.00 loops=1)
-                          Filter: (rolname = ANY (((InitPlan 1).col1)::name[]))
-                          Rows Removed by Filter: 26
-                          Buffers: shared hit=201
-                    ->  Hash  (cost=3.95..3.95 rows=3 width=4) (actual rows=7.00 loops=1)
-                          Buckets: 1024  Batches: 1  Memory Usage: 9kB
-                          Buffers: shared hit=3
-                          ->  Hash Join  (cost=2.63..3.95 rows=3 width=4) (actual rows=7.00 loops=1)
-                                Hash Cond: (m.member = pg_authid.oid)
+              Buffers: shared hit=413
+              ->  Result  (cost=3.99..6.53 rows=1 width=64) (actual rows=6.00 loops=1)
+                    One-Time Filter: (InitPlan 2).col1
+                    Buffers: shared hit=413
+                    ->  Hash Join  (cost=3.99..6.53 rows=1 width=64) (actual rows=6.00 loops=1)
+                          Hash Cond: (pg_authid_1.oid = m.roleid)
+                          Buffers: shared hit=178
+                          ->  Seq Scan on pg_authid pg_authid_1  (cost=0.00..2.50 rows=9 width=72) (actual rows=4.00 loops=1)
+                                Filter: (rolname = ANY (((InitPlan 1).col1)::name[]))
+                                Rows Removed by Filter: 26
+                                Buffers: shared hit=175
+                          ->  Hash  (cost=3.95..3.95 rows=3 width=4) (actual rows=7.00 loops=1)
+                                Buckets: 1024  Batches: 1  Memory Usage: 9kB
                                 Buffers: shared hit=3
-                                ->  Seq Scan on pg_auth_members m  (cost=0.00..1.24 rows=13 width=8) (actual rows=13.00 loops=1)
-                                      Filter: inherit_option
-                                      Rows Removed by Filter: 11
-                                      Buffers: shared hit=1
-                                ->  Hash  (cost=2.55..2.55 rows=7 width=4) (actual rows=7.00 loops=1)
-                                      Buckets: 1024  Batches: 1  Memory Usage: 9kB
-                                      Buffers: shared hit=2
-                                      ->  Hash Join  (cost=1.16..2.55 rows=7 width=4) (actual rows=7.00 loops=1)
-                                            Hash Cond: (pg_authid.rolname = (u.login)::text)
+                                ->  Hash Join  (cost=2.63..3.95 rows=3 width=4) (actual rows=7.00 loops=1)
+                                      Hash Cond: (m.member = pg_authid.oid)
+                                      Buffers: shared hit=3
+                                      ->  Seq Scan on pg_auth_members m  (cost=0.00..1.24 rows=13 width=8) (actual rows=13.00 loops=1)
+                                            Filter: inherit_option
+                                            Rows Removed by Filter: 11
+                                            Buffers: shared hit=1
+                                      ->  Hash  (cost=2.55..2.55 rows=7 width=4) (actual rows=7.00 loops=1)
+                                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
                                             Buffers: shared hit=2
-                                            ->  Seq Scan on pg_authid  (cost=0.00..1.30 rows=30 width=72) (actual rows=30.00 loops=1)
-                                                  Buffers: shared hit=1
-                                            ->  Hash  (cost=1.07..1.07 rows=7 width=10) (actual rows=7.00 loops=1)
-                                                  Buckets: 1024  Batches: 1  Memory Usage: 9kB
-                                                  Buffers: shared hit=1
-                                                  ->  Seq Scan on app_user u  (cost=0.00..1.07 rows=7 width=10) (actual rows=7.00 loops=1)
-                                                        Buffers: shared hit=1
+                                            ->  Hash Join  (cost=1.16..2.55 rows=7 width=4) (actual rows=7.00 loops=1)
+                                                  Hash Cond: (pg_authid.rolname = (u.login)::text)
+                                                  Buffers: shared hit=2
+                                                  ->  Seq Scan on pg_authid  (cost=0.00..1.30 rows=30 width=72) (actual rows=30.00 loops=1)
+                                                        Buffers: shared hit=1
+                                                  ->  Hash  (cost=1.07..1.07 rows=7 width=10) (actual rows=7.00 loops=1)
+                                                        Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                                        Buffers: shared hit=1
+                                                        ->  Seq Scan on app_user u  (cost=0.00..1.07 rows=7 width=10) (actual rows=7.00 loops=1)
+                                                              Buffers: shared hit=1

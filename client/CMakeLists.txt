@@ -48,6 +48,7 @@ qt_add_executable(superbd WIN32
     src/ui/pages/ReportPage.h src/ui/pages/ReportPage.cpp
     src/ui/pages/UsersPage.h src/ui/pages/UsersPage.cpp
     src/ui/pages/ListPages.h src/ui/pages/ListPages.cpp
+    src/ui/pages/DbAdminPages.h src/ui/pages/DbAdminPages.cpp
     resources/superbd.qrc
 )
 

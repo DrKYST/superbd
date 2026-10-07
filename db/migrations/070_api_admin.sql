@@ -159,7 +159,9 @@ COMMENT ON FUNCTION api.user_set_login(text, boolean) IS
 
 -- ============================================================================ администратор БД
 
--- Журнал изменений за период с отбором по таблице, операции и пользователю.
+-- Журнал изменений за период с отбором по таблице, операции и пользователю (экран «Журнал изменений», макет
+-- ChangeLog.dc.html). Операция — словом; «Изменено полей» — число полей, у которых значение до и после различается
+-- (только у изменения). Подзапрос в списке выборки считается для строк страницы, а не всего журнала.
 DROP FUNCTION IF EXISTS api.q_change_log(date, date, text, text, text, integer, integer);
 CREATE OR REPLACE FUNCTION api.q_change_log(
     p_from date,
@@ -170,8 +172,8 @@ CREATE OR REPLACE FUNCTION api.q_change_log(
     p_limit integer DEFAULT 20,
     p_offset integer DEFAULT 0)
 RETURNS TABLE (
-    id bigint, changed_at timestamptz, db_user text, table_name text, operation text, row_pk text,
-    old_row jsonb, new_row jsonb, total_count bigint)
+    id bigint, changed_at timestamptz, db_user text, table_name text, operation text, operation_title text,
+    row_pk text, changed_fields integer, old_row jsonb, new_row jsonb, total_count bigint)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET TimeZone = 'Europe/Moscow'
@@ -179,8 +181,16 @@ SET plan_cache_mode = force_custom_plan
 AS $$
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_dba']);
+    IF p_from IS NULL OR p_to IS NULL THEN
+        RAISE EXCEPTION 'Укажите период' USING ERRCODE = 'P0001';
+    END IF;
     RETURN QUERY
-    SELECT l.id, l.changed_at, l.db_user::text, l.table_name::text, l.operation::text, l.row_pk,
+    SELECT l.id, l.changed_at, l.db_user::text, l.table_name::text, l.operation::text,
+           CASE l.operation WHEN 'INSERT' THEN 'добавление' WHEN 'UPDATE' THEN 'изменение' ELSE 'удаление' END,
+           l.row_pk,
+           CASE WHEN l.operation = 'UPDATE' THEN
+                (SELECT count(*)::integer FROM pg_catalog.jsonb_object_keys(l.new_row) k
+                 WHERE (l.old_row -> k) IS DISTINCT FROM (l.new_row -> k)) END,
            l.old_row, l.new_row, count(*) OVER ()
     FROM audit.change_log l
     WHERE l.changed_at >= p_from AND l.changed_at < p_to + 1
@@ -191,14 +201,39 @@ BEGIN
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
 COMMENT ON FUNCTION api.q_change_log(date, date, text, text, text, integer, integer) IS
-    'Журнал изменений за период: кто, когда, какую строку какой таблицы изменил, строка до и после (jsonb); только администратор БД (D26)';
+    'Журнал изменений за период: кто, когда, какую строку какой таблицы изменил, операция словом, число изменённых полей, строка до и после (jsonb); только администратор БД (D26)';
 
--- Таблицы проекта: оценка числа строк, размер с индексами, последняя очистка и сбор статистики, чтения.
+-- Поля одной записи журнала: «Поле / Было / Стало» с признаком изменения (нижняя таблица экрана «Журнал изменений»).
+-- Ключи — объединение ключей строки до и после: у добавления нет строки «до», у удаления — «после»
+-- (coalesce нужен: NULL || jsonb даёт NULL, и ключей не было бы вовсе).
+DROP FUNCTION IF EXISTS api.q_change_log_fields(bigint);
+CREATE OR REPLACE FUNCTION api.q_change_log_fields(p_id bigint)
+RETURNS TABLE (field text, old_value text, new_value text, changed boolean)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+    PERFORM sec.require_group(ARRAY['grp_dba']);
+    RETURN QUERY
+    SELECT k.key, l.old_row ->> k.key, l.new_row ->> k.key,
+           (l.old_row -> k.key) IS DISTINCT FROM (l.new_row -> k.key)
+    FROM audit.change_log l
+    CROSS JOIN LATERAL pg_catalog.jsonb_object_keys(coalesce(l.old_row, '{}') || coalesce(l.new_row, '{}')) AS k(key)
+    WHERE l.id = p_id
+    ORDER BY 1;
+END $$;
+COMMENT ON FUNCTION api.q_change_log_fields(bigint) IS
+    'Поля записи журнала изменений: значение до и после, изменилось ли; только администратор БД (D26)';
+
+-- Таблицы проекта (экран «Таблицы базы данных», макет DbTables.dc.html): назначение (из комментария таблицы, до « — »),
+-- оценка числа строк, размер с индексами по-русски, последняя очистка и сбор статистики, чтения целиком и по индексу.
+-- Пагинация — как у всех списков (CLAUDE.md, правило 5), по умолчанию — все таблицы одной страницей.
 DROP FUNCTION IF EXISTS api.db_tables();
-CREATE OR REPLACE FUNCTION api.db_tables()
+DROP FUNCTION IF EXISTS api.db_tables(integer, integer);
+CREATE OR REPLACE FUNCTION api.db_tables(p_limit integer DEFAULT 200, p_offset integer DEFAULT 0)
 RETURNS TABLE (
     table_name text, table_title text, rows_estimate bigint, total_size text, total_bytes bigint,
-    last_vacuum timestamptz, last_analyze timestamptz, seq_scan bigint, idx_scan bigint)
+    last_vacuum timestamptz, last_analyze timestamptz, seq_scan bigint, idx_scan bigint, total_count bigint)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 SET TimeZone = 'Europe/Moscow'
@@ -207,27 +242,32 @@ BEGIN
     PERFORM sec.require_group(ARRAY['grp_dba']);
     RETURN QUERY
     SELECT t.schemaname || '.' || t.relname,
-           pg_catalog.obj_description(t.relid, 'pg_class'),
+           split_part(pg_catalog.obj_description(t.relid, 'pg_class'), ' — ', 1),
            t.n_live_tup,
-           pg_catalog.pg_size_pretty(pg_catalog.pg_total_relation_size(t.relid)),
+           replace(replace(replace(replace(pg_catalog.pg_size_pretty(pg_catalog.pg_total_relation_size(t.relid)),
+                   ' bytes', ' Б'), ' kB', ' кБ'), ' MB', ' МБ'), ' GB', ' ГБ'),
            pg_catalog.pg_total_relation_size(t.relid),
            greatest(t.last_vacuum, t.last_autovacuum),
            greatest(t.last_analyze, t.last_autoanalyze),
-           t.seq_scan, coalesce(t.idx_scan, 0)
+           t.seq_scan, coalesce(t.idx_scan, 0),             -- у таблицы без индексов idx_scan — NULL
+           count(*) OVER ()
     FROM pg_catalog.pg_stat_user_tables t
     WHERE t.schemaname IN ('ref', 'core', 'sec', 'audit')
-    ORDER BY pg_catalog.pg_total_relation_size(t.relid) DESC, 1;
+    ORDER BY pg_catalog.pg_total_relation_size(t.relid) DESC, 1
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
-COMMENT ON FUNCTION api.db_tables() IS
-    'Состояние таблиц проекта: строки (оценка), размер с индексами, последняя очистка и сбор статистики, последовательные и индексные чтения; только администратор БД (D26)';
+COMMENT ON FUNCTION api.db_tables(integer, integer) IS
+    'Состояние таблиц проекта: назначение, строки (оценка), размер с индексами, последняя очистка и сбор статистики, последовательные и индексные чтения; только администратор БД (D26)';
 
--- Подключения к базе. SECURITY INVOKER: текст запросов других сеансов виден благодаря pg_monitor у администратора БД,
--- у владельца функций app_owner такого права нет.
+-- Подключения к базе (экран «Подключения к базе», макет DbConnections.dc.html). SECURITY INVOKER: текст запросов
+-- других сеансов виден благодаря pg_monitor у администратора БД, у владельца функций app_owner такого права нет.
+-- Значения параметров запросов (в том числе новых паролей, D27) в pg_stat_activity не попадают.
 DROP FUNCTION IF EXISTS api.db_connections();
-CREATE OR REPLACE FUNCTION api.db_connections()
+DROP FUNCTION IF EXISTS api.db_connections(integer, integer);
+CREATE OR REPLACE FUNCTION api.db_connections(p_limit integer DEFAULT 200, p_offset integer DEFAULT 0)
 RETURNS TABLE (
     pid integer, user_name text, application_name text, client_addr text, backend_start timestamptz,
-    state text, state_change timestamptz, wait_event text, query text)
+    state text, state_title text, state_change timestamptz, wait_event text, query text, total_count bigint)
 LANGUAGE plpgsql STABLE SECURITY INVOKER
 SET search_path = pg_catalog, pg_temp
 SET TimeZone = 'Europe/Moscow'
@@ -236,23 +276,34 @@ BEGIN
     PERFORM sec.require_group(ARRAY['grp_dba']);
     RETURN QUERY
     SELECT a.pid, a.usename::text, a.application_name, host(a.client_addr), a.backend_start,
-           a.state, a.state_change, a.wait_event_type || coalesce(': ' || a.wait_event, ''), a.query
+           a.state,
+           CASE a.state WHEN 'active' THEN 'активен'
+                        WHEN 'idle' THEN 'ожидает команды'
+                        WHEN 'idle in transaction' THEN 'в транзакции'
+                        WHEN 'idle in transaction (aborted)' THEN 'в прерванной транзакции'
+                        WHEN 'fastpath function call' THEN 'вызов функции'
+                        ELSE a.state END,
+           a.state_change,
+           a.wait_event_type || coalesce(': ' || a.wait_event, ''),   -- тип ожидания без события — без «: »
+           a.query,
+           count(*) OVER ()
     FROM pg_catalog.pg_stat_activity a
     WHERE a.datname = current_database() AND a.backend_type = 'client backend'
-    ORDER BY a.backend_start;
+    ORDER BY a.backend_start
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
-COMMENT ON FUNCTION api.db_connections() IS
-    'Подключения к базе: пользователь, программа, адрес, начало сеанса, состояние, ожидание, текущий запрос; только администратор БД (D26)';
+COMMENT ON FUNCTION api.db_connections(integer, integer) IS
+    'Подключения к базе: пользователь, программа, адрес, начало сеанса, состояние (и словом), ожидание, текущий запрос; только администратор БД (D26)';
 
 REVOKE ALL ON FUNCTION api.q_users(text, text, integer, integer), api.user_create(text, text, text, integer, boolean),
     api.user_set_login(text, boolean), api.q_change_log(date, date, text, text, text, integer, integer),
-    api.db_tables(), api.db_connections() FROM PUBLIC;
+    api.q_change_log_fields(bigint), api.db_tables(integer, integer), api.db_connections(integer, integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION api.q_users(text, text, integer, integer), api.user_create(text, text, text, integer, boolean),
     api.user_set_login(text, boolean) TO grp_admin, grp_dba;
 REVOKE ALL ON api.v_manageable_groups FROM PUBLIC;
 GRANT SELECT ON api.v_manageable_groups TO grp_admin, grp_dba;
 GRANT EXECUTE ON FUNCTION api.q_change_log(date, date, text, text, text, integer, integer),
-    api.db_tables(), api.db_connections() TO grp_dba;
+    api.q_change_log_fields(bigint), api.db_tables(integer, integer), api.db_connections(integer, integer) TO grp_dba;
 -- db_connections выполняется от имени пользователя: ему нужен доступ к функциям проверки группы.
 GRANT USAGE ON SCHEMA sec TO grp_dba;
 GRANT EXECUTE ON FUNCTION sec.require_group(text[]), sec.check_group(text[]), sec.current_group(), sec.group_of(name)

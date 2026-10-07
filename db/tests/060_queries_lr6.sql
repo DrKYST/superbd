@@ -236,3 +236,13 @@ SELECT pg_temp.check('12.17 права: каждой роли — только �
     AND :'r_adm' = '10010000' AND :'r_dba' = '10000000',
     format('оператор %s, руководитель %s, аналитик %s, администратор %s, администратор БД %s',
            :'r_op', :'r_mgr', :'r_chief', :'r_adm', :'r_dba'));
+
+-- 12.18 Период без операций: ROLLUP всё равно даёт строку «Итого» — в ней нули, а не NULL (coalesce у сумм 15б).
+SET SESSION AUTHORIZATION mgr_donnet;
+SELECT count(*) AS q15_empty_rows,
+       coalesce(bool_and(period IS NULL AND period_title = 'Итого' AND new_contracts = 0 AND volume_mb = 0
+                         AND connection_fees = 0 AND traffic_fees = 0 AND revenue = 0), false) AS q15_empty_ok
+FROM api.report_revenue('2030-01-01', '2030-01-31') \gset
+RESET SESSION AUTHORIZATION;
+SELECT pg_temp.check('12.18 запрос 15б за период без операций: одна строка «Итого» с нулями',
+    :q15_empty_rows = 1 AND :'q15_empty_ok' = 't', format('строк %s', :q15_empty_rows));

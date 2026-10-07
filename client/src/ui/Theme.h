@@ -8,6 +8,7 @@ namespace Theme {
 inline QColor totalRowBackground() { return QColor(0xf2, 0xf2, 0xf2); }   // .g .tr.tot .td
 inline QColor okText() { return QColor(0x2c, 0x7a, 0x2c); }               // .okt
 inline QColor hintText() { return QColor(0x8a, 0x8a, 0x8a); }             // .ftitle small
+inline QColor changedRowBackground() { return QColor(0xff, 0xf3, 0xc4); } // .chg .td (ChangeLog.dc.html)
 constexpr int rowHeight = 22;                                             // .g .td height
 
 // Диаграммы отчётов (Stats.dc.html, ui-spec.md §4): ряды #4f81bd, #c0504d, #9bbb59, #8064a2, #bfbfbf;

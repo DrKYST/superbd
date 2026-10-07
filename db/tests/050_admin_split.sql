@@ -183,3 +183,30 @@ BEGIN
         EXECUTE format('DROP ROLE %I', r);
     END LOOP;
 END $$;
+
+-- 10.16 Экраны администратора БД: журнал (операция словом, число изменённых полей, «поле — было — стало»),
+-- таблицы и подключения с total_count. Записи журнала — временные (откат транзакции).
+BEGIN;
+INSERT INTO audit.change_log (table_name, operation, row_pk, old_row, new_row) VALUES
+    ('core.contract', 'UPDATE', '1', '{"closed_on": null, "note": null, "row_version": 3}',
+                                     '{"closed_on": "2026-10-31", "note": null, "row_version": 4}'),
+    ('core.session', 'INSERT', '7', NULL, '{"volume_mb": 12.5}');
+SET SESSION AUTHORIZATION dba_main;
+SELECT count(*) AS j_rows,
+       string_agg(operation_title || ':' || coalesce(changed_fields::text, '-'), ',' ORDER BY id) AS j_ops,
+       max(id) FILTER (WHERE operation = 'UPDATE') AS j_upd
+FROM api.q_change_log(current_date, current_date) \gset
+SELECT count(*) AS j_fields, count(*) FILTER (WHERE changed) AS j_changed,
+       string_agg(field || '=' || coalesce(old_value, '∅') || '→' || coalesce(new_value, '∅'), '; ' ORDER BY field) AS j_diff
+FROM api.q_change_log_fields(:j_upd) \gset
+SELECT count(*) AS t_rows, max(total_count) AS t_total, bool_and(total_size ~ ' (Б|кБ|МБ|ГБ)$') AS t_ru,
+       bool_and(table_title NOT LIKE '% — %') AS t_short
+FROM api.db_tables() \gset
+SELECT max(total_count) AS c_total, max(state_title) FILTER (WHERE pid = pg_backend_pid()) AS c_self_state
+FROM api.db_connections() \gset
+RESET SESSION AUTHORIZATION;
+ROLLBACK;
+SELECT pg_temp.check('10.16 экраны администратора БД: журнал (операция, изменённые поля, было/стало), таблицы, подключения',
+    :j_rows = 2 AND :'j_ops' = 'изменение:2,добавление:-' AND :j_fields = 3 AND :j_changed = 2
+    AND :t_rows = :t_total AND :'t_ru' = 't' AND :'t_short' = 't' AND :c_total >= 1 AND :'c_self_state' = 'активен',
+    format('журнал %s; поля %s; таблиц %s; подключений %s', :'j_ops', :'j_diff', :t_total, :c_total));

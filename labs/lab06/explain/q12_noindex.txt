@@ -32,7 +32,17 @@ SELECT period_title, subscriber_type, contracts FROM api.report_new_contracts('2
  2025         | Общественная организация       |        85
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 0.032 ms  plan:
+duration: 0.013 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 0.025 ms  plan:
 Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
 Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -44,7 +54,17 @@ Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
           ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
                 Buffers: shared hit=1
 
-duration: 5.292 ms  plan:
+duration: 0.009 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 6.404 ms  plan:
 Query Text: SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer, st.name::text, k.contracts
     FROM (SELECT date_trunc(p_grain, c.connected_on::timestamp)::date AS period, s.subscriber_type_id,
                  count(*) AS contracts
@@ -57,10 +77,10 @@ Query Text: SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer
 Sort  (cost=1328.09..1329.29 rows=479 width=82) (actual rows=22.00 loops=1)
   Sort Key: ((date_trunc('year'::text, (c.connected_on)::timestamp without time zone))::date), st.id
   Sort Method: quicksort  Memory: 26kB
-  Buffers: shared hit=441
+  Buffers: shared hit=414
   ->  Hash Join  (cost=922.91..1306.76 rows=479 width=82) (actual rows=22.00 loops=1)
         Hash Cond: (s.subscriber_type_id = st.id)
-        Buffers: shared hit=435
+        Buffers: shared hit=408
         ->  HashAggregate  (cost=921.66..1074.10 rows=8711 width=14) (actual rows=22.00 loops=1)
               Group Key: (date_trunc('year'::text, (c.connected_on)::timestamp without time zone))::date, s.subscriber_type_id
               Batches: 1  Memory Usage: 289kB

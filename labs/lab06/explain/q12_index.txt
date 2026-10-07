@@ -20,7 +20,17 @@ SELECT period_title, subscriber_type, contracts FROM api.report_new_contracts('2
  Сентябрь 2026 | Больница                       |         1
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 0.010 ms  plan:
+duration: 0.012 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 0.004 ms  plan:
 Query Text: 
     SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
 
@@ -28,7 +38,17 @@ Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=4) (actual rows=1.00 loops
   Filter: ((login)::text = SESSION_USER)
   Buffers: shared hit=1
 
-duration: 1.151 ms  plan:
+duration: 0.008 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 1.262 ms  plan:
 Query Text: SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer, st.name::text, k.contracts
     FROM (SELECT date_trunc(p_grain, c.connected_on::timestamp)::date AS period, s.subscriber_type_id,
                  count(*) AS contracts

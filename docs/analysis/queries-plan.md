@@ -128,7 +128,8 @@ LEFT JOIN core.session se ON se.contract_id = c.id
 WHERE c.provider_id = ANY (v_scope) AND c.closed_on IS NULL
   AND c.connected_on < current_date - p_days
 GROUP BY c.id, s.id
-HAVING coalesce(max(se.started_at), '-infinity') < current_date - p_days
+HAVING max(se.started_at) IS NULL                      -- сеансов не было
+    OR max(se.started_at) < current_date - p_days       -- или последний — до границы
 ORDER BY last_session NULLS FIRST;
 ```
 
@@ -203,8 +204,8 @@ FROM (SELECT p.id, p.display_name,
              count(r.kind) FILTER (WHERE r.kind = 'подключение')                AS new_contracts,
              coalesce(sum(r.volume_mb), 0)                                       AS volume_mb,
              coalesce(sum(r.amount), 0)                                          AS revenue,
-             row_number() OVER (ORDER BY coalesce(sum(r.amount), 0) DESC, p.id) AS rnk,
-             sum(coalesce(sum(r.amount), 0)) OVER ()                             AS total
+             row_number() OVER (ORDER BY sum(r.amount) DESC NULLS LAST, p.id)   AS rnk,   -- без выручки — в конец
+             sum(sum(r.amount)) OVER ()                                          AS total
       FROM api.v_providers p
       LEFT JOIN api.v_revenue_items r ON r.provider_id = p.id AND r.at >= p_from AND r.at < p_to + 1
       GROUP BY p.id, p.display_name) x

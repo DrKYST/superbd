@@ -20,7 +20,17 @@ SELECT contract_no, subscriber_name, connected_on, last_session, idle_days, tota
  Д-2024-002122 | Коваленко Игорь Викторович                | 2024-07-02   | 2025-12-26 08:47:42.947073+03 |       285 |         197
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 0.009 ms  plan:
+duration: 0.012 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 0.004 ms  plan:
 Query Text: 
     SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
 
@@ -29,7 +39,17 @@ Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=4) (actual rows=1.00 loops
   Rows Removed by Filter: 2
   Buffers: shared hit=1
 
-duration: 2.643 ms  plan:
+duration: 0.009 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 9.717 ms  plan:
 Query Text: SELECT c.id, c.contract_no::text, s.id, s.name::text, coalesce(c.contact_phone, s.phone)::text,
            c.connected_on, max(se.started_at),
            current_date - coalesce(max(se.started_at)::date, c.connected_on),
@@ -40,47 +60,49 @@ Query Text: SELECT c.id, c.contract_no::text, s.id, s.name::text, coalesce(c.con
     WHERE c.provider_id = ANY (v_scope) AND c.closed_on IS NULL
       AND c.connected_on < v_border
     GROUP BY c.id, s.id
-    HAVING coalesce(max(se.started_at), '-infinity') < v_border::timestamptz
+    HAVING max(se.started_at) IS NULL                       -- сеансов не было
+        OR max(se.started_at) < v_border::timestamptz        -- или последний — до границы
     ORDER BY max(se.started_at) NULLS FIRST, c.connected_on, c.contract_no
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
-Limit  (cost=1945.45..1945.47 rows=10 width=143) (actual rows=10.00 loops=1)
-  Buffers: shared hit=1418
-  ->  Sort  (cost=1945.45..1947.94 rows=995 width=143) (actual rows=10.00 loops=1)
+Limit  (cost=2825.95..2825.98 rows=10 width=143) (actual rows=10.00 loops=1)
+  Buffers: shared hit=1221
+  ->  Sort  (cost=2825.95..2828.46 rows=1005 width=143) (actual rows=10.00 loops=1)
         Sort Key: (max(se.started_at)) NULLS FIRST, c.connected_on, ((c.contract_no)::text)
         Sort Method: top-N heapsort  Memory: 29kB
-        Buffers: shared hit=1418
-        ->  WindowAgg  (cost=1916.43..1923.95 rows=995 width=143) (actual rows=197.00 loops=1)
+        Buffers: shared hit=1221
+        ->  WindowAgg  (cost=2796.64..2804.23 rows=1005 width=143) (actual rows=197.00 loops=1)
               Window: w1 AS ()
               Storage: Memory  Maximum Storage: 42kB
-              Buffers: shared hit=1409
-              ->  HashAggregate  (cost=1859.29..1904.05 rows=995 width=114) (actual rows=197.00 loops=1)
+              Buffers: shared hit=1212
+              ->  HashAggregate  (cost=2739.37..2784.13 rows=1005 width=114) (actual rows=197.00 loops=1)
                     Group Key: c.id, s.id
-                    Filter: (COALESCE(max(se.started_at), '-infinity'::timestamp with time zone) < ('2026-09-07'::date)::timestamp with time zone)
+                    Filter: ((max(se.started_at) IS NULL) OR (max(se.started_at) < ('2026-09-07'::date)::timestamp with time zone))
                     Batches: 1  Memory Usage: 153kB
                     Rows Removed by Filter: 167
-                    Buffers: shared hit=1409
-                    ->  Nested Loop Left Join  (cost=227.67..1836.91 rows=2984 width=114) (actual rows=3116.00 loops=1)
-                          Buffers: shared hit=1409
-                          ->  Hash Join  (cost=227.26..534.84 rows=358 width=106) (actual rows=364.00 loops=1)
-                                Hash Cond: (s.id = c.subscriber_id)
-                                Buffers: shared hit=316
-                                ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=66) (actual rows=8000.00 loops=1)
-                                      Buffers: shared hit=144
+                    Buffers: shared hit=1212
+                    ->  Hash Join  (cost=551.26..2716.99 rows=2984 width=114) (actual rows=3116.00 loops=1)
+                          Hash Cond: (c.subscriber_id = s.id)
+                          Buffers: shared hit=1212
+                          ->  Hash Right Join  (cost=227.26..2385.16 rows=2984 width=52) (actual rows=3116.00 loops=1)
+                                Hash Cond: (se.contract_id = c.id)
+                                Buffers: shared hit=1068
+                                ->  Seq Scan on session se  (cost=0.00..1895.25 rows=100025 width=12) (actual rows=100025.00 loops=1)
+                                      Buffers: shared hit=895
                                 ->  Hash  (cost=222.78..222.78 rows=358 width=44) (actual rows=364.00 loops=1)
                                       Buckets: 1024  Batches: 1  Memory Usage: 32kB
-                                      Buffers: shared hit=172
+                                      Buffers: shared hit=173
                                       ->  Bitmap Heap Scan on contract c  (cost=12.34..222.78 rows=358 width=44) (actual rows=364.00 loops=1)
                                             Recheck Cond: ((provider_id = ANY ('{1}'::integer[])) AND (connected_on < '2026-09-07'::date))
                                             Filter: (closed_on IS NULL)
                                             Rows Removed by Filter: 34
-                                            Heap Blocks: exact=170
-                                            Buffers: shared hit=172
-                                            ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..12.26 rows=397 width=0) (actual rows=398.00 loops=1)
+                                            Heap Blocks: exact=171
+                                            Buffers: shared hit=173
+                                            ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..12.26 rows=397 width=0) (actual rows=399.00 loops=1)
                                                   Index Cond: ((provider_id = ANY ('{1}'::integer[])) AND (connected_on < '2026-09-07'::date))
                                                   Index Searches: 1
                                                   Buffers: shared hit=2
-                          ->  Index Only Scan using ix_session_contract_id_started_at on session se  (cost=0.42..3.55 rows=9 width=12) (actual rows=8.56 loops=364)
-                                Index Cond: (contract_id = c.id)
-                                Heap Fetches: 0
-                                Index Searches: 364
-                                Buffers: shared hit=1093
+                          ->  Hash  (cost=224.00..224.00 rows=8000 width=66) (actual rows=8000.00 loops=1)
+                                Buckets: 8192  Batches: 1  Memory Usage: 833kB
+                                Buffers: shared hit=144
+                                ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=66) (actual rows=8000.00 loops=1)
+                                      Buffers: shared hit=144

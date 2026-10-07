@@ -11,6 +11,7 @@
 #include <QToolButton>
 
 #include "ui/pages/ContractsPage.h"
+#include "ui/pages/DbAdminPages.h"
 #include "ui/dialogs/PasswordDialogs.h"
 #include "ui/dialogs/UserDialog.h"
 #include "ui/pages/HomePage.h"
@@ -303,6 +304,13 @@ QWidget *MainWindow::createPage(const QString &form)
         return new SharedSubscribersPage(ui->pages);
     if (form == QLatin1String("idle_contracts"))
         return new IdleContractsPage(m_me, ui->pages);
+    // Администратор БД (D26)
+    if (form == QLatin1String("change_log"))
+        return new ChangeLogPage(ui->pages);
+    if (form == QLatin1String("db_tables"))
+        return new DbTablesPage(m_me, ui->pages);
+    if (form == QLatin1String("db_connections"))
+        return new DbConnectionsPage(ui->pages);
     return new PlaceholderPage(RoleConfig::formTitle(form), mockupScreen(form), ui->pages);
 }
 

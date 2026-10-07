@@ -18,7 +18,10 @@ SET ROLE app_owner;
 -- ============================================================================ служебные
 
 -- Проверка параметров отчёта: период задан и не перевёрнут, периодичность — месяц, квартал или год.
-CREATE OR REPLACE FUNCTION sec.check_report_period(p_from date, p_to date, p_grain text)
+-- p_grain_required = false — периодичность необязательна (отчёт может быть без разбивки по периодам).
+DROP FUNCTION IF EXISTS sec.check_report_period(date, date, text);
+CREATE OR REPLACE FUNCTION sec.check_report_period(p_from date, p_to date, p_grain text,
+                                                   p_grain_required boolean DEFAULT true)
 RETURNS void
 LANGUAGE plpgsql IMMUTABLE
 SET search_path = pg_catalog, pg_temp
@@ -30,12 +33,15 @@ BEGIN
     IF p_to < p_from THEN
         RAISE EXCEPTION 'Дата окончания периода раньше даты начала' USING ERRCODE = 'P0001';
     END IF;
+    IF p_grain IS NULL AND p_grain_required THEN
+        RAISE EXCEPTION 'Укажите периодичность: месяц, квартал или год' USING ERRCODE = 'P0001';
+    END IF;
     IF p_grain IS NOT NULL AND p_grain NOT IN ('month', 'quarter', 'year') THEN
         RAISE EXCEPTION 'Периодичность: месяц, квартал или год' USING ERRCODE = 'P0001';
     END IF;
 END $$;
-COMMENT ON FUNCTION sec.check_report_period(date, date, text) IS
-    'Проверка параметров отчёта: период задан, окончание не раньше начала, периодичность month / quarter / year';
+COMMENT ON FUNCTION sec.check_report_period(date, date, text, boolean) IS
+    'Проверка параметров отчёта: период задан, окончание не раньше начала, периодичность month / quarter / year (обязательна, если p_grain_required)';
 
 -- Подпись периода отчёта: «Январь 2026», «III квартал 2026», «2026».
 CREATE OR REPLACE FUNCTION sec.period_title(p_grain text, p_period date)
@@ -151,7 +157,7 @@ DECLARE
     v_scope integer[] := sec.scope_data(p_provider_id);    -- руководитель — свой, аналитик — все или выбранный
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_manager', 'grp_chief']);
-    PERFORM sec.check_report_period(p_from, p_to, coalesce(p_grain, ''));
+    PERFORM sec.check_report_period(p_from, p_to, p_grain);
     RETURN QUERY
     SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer, st.name::text, k.contracts
     FROM (SELECT date_trunc(p_grain, c.connected_on::timestamp)::date AS period, s.subscriber_type_id,
@@ -241,7 +247,8 @@ BEGIN
     WHERE c.provider_id = ANY (v_scope) AND c.closed_on IS NULL
       AND c.connected_on < v_border
     GROUP BY c.id, s.id
-    HAVING coalesce(max(se.started_at), '-infinity') < v_border::timestamptz
+    HAVING max(se.started_at) IS NULL                       -- сеансов не было
+        OR max(se.started_at) < v_border::timestamptz        -- или последний — до границы
     ORDER BY max(se.started_at) NULLS FIRST, c.connected_on, c.contract_no
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
@@ -270,11 +277,15 @@ SET plan_cache_mode = force_custom_plan
 AS $$
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_manager', 'grp_chief']);
-    PERFORM sec.check_report_period(p_from, p_to, coalesce(p_grain, ''));
+    PERFORM sec.check_report_period(p_from, p_to, p_grain);
     RETURN QUERY
-    SELECT k.period, coalesce(sec.period_title(p_grain, k.period), 'Итого'),
+    SELECT k.period, CASE WHEN k.is_total THEN 'Итого' ELSE sec.period_title(p_grain, k.period) END,
            k.new_contracts, k.volume_mb, k.connection_fees, k.revenue - k.connection_fees, k.revenue
-    FROM (SELECT date_trunc(p_grain, r.at)::date AS period,                            -- NULL — строка «Итого»
+    FROM (SELECT date_trunc(p_grain, r.at)::date AS period,                            -- NULL у строки «Итого»
+                 grouping(date_trunc(p_grain, r.at)::date) = 1                     AS is_total,
+                 -- coalesce у сумм нужен: за период без операций ROLLUP всё равно даёт строку «Итого»,
+                 -- и суммы в ней NULL (счётчик «Выручка за месяц» показал бы пустоту вместо 0);
+                 -- у суммы с FILTER — ещё и в месяце без новых договоров
                  count(*) FILTER (WHERE r.kind = 'подключение')                    AS new_contracts,
                  coalesce(sum(r.volume_mb), 0)                                     AS volume_mb,
                  coalesce(sum(r.amount) FILTER (WHERE r.kind = 'подключение'), 0)  AS connection_fees,
@@ -283,8 +294,8 @@ BEGIN
           WHERE r.at >= p_from AND r.at < p_to + 1
             AND (p_provider_id IS NULL OR r.provider_id = p_provider_id)
             AND (p_subscriber_type_id IS NULL OR r.subscriber_type_id = p_subscriber_type_id)
-          GROUP BY ROLLUP (1)) k
-    ORDER BY k.period NULLS LAST;
+          GROUP BY ROLLUP (date_trunc(p_grain, r.at)::date)) k
+    ORDER BY k.is_total, k.period;
 END $$;
 COMMENT ON FUNCTION api.report_revenue(date, date, text, integer, integer) IS
     'Запрос 15б (ЛР 6). Выручка по периодам: новых договоров, трафик, плата за подключение, оплата трафика, выручка и строка «Итого» — итоговый запрос к объединению 15а (запрос на запросе)';
@@ -320,15 +331,16 @@ DECLARE
     v_top integer := least(greatest(coalesce(p_top, 4), 1), 10);
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_chief']);
-    PERFORM sec.check_report_period(p_from, p_to, p_grain);
+    PERFORM sec.check_report_period(p_from, p_to, p_grain, false);
     RETURN QUERY
     WITH x AS (            -- провайдер: итоги за период, место по выручке, общий итог
         SELECT p.id, p.display_name,
                coalesce(k.contracts, 0)                                           AS contracts,
                coalesce(r.volume_mb, 0)                                           AS volume_mb,
                coalesce(r.revenue, 0)                                             AS revenue,
-               least(row_number() OVER (ORDER BY coalesce(r.revenue, 0) DESC, p.id), v_top + 1)::integer AS grp,
-               sum(coalesce(r.revenue, 0)) OVER ()                                AS total
+               -- провайдер без выручки (NULL после левого соединения) — в конец, а не первым (NULL при DESC идёт первым)
+               least(row_number() OVER (ORDER BY r.revenue DESC NULLS LAST, p.id), v_top + 1)::integer AS grp,
+               sum(r.revenue) OVER ()                                             AS total
         FROM api.v_providers p
         LEFT JOIN (SELECT i.provider_id, sum(i.volume_mb) AS volume_mb, sum(i.amount) AS revenue
                    FROM api.v_revenue_items i
@@ -343,7 +355,7 @@ BEGIN
                                                  WHERE s.subscriber_type_id = p_subscriber_type_id))
                    GROUP BY c.provider_id) k ON k.provider_id = p.id),
     t AS (                 -- группы «первые N» и «Прочие» и строка «Итого» (ROLLUP)
-        SELECT coalesce(x.grp, v_top + 2) AS ord,
+        SELECT CASE WHEN grouping(x.grp) = 1 THEN v_top + 2 ELSE x.grp END AS ord,
                CASE WHEN grouping(x.grp) = 1 THEN 'Итого'
                     WHEN x.grp <= v_top THEN min(x.display_name)
                     ELSE 'Прочие (' || sec.count_title(count(*), 'провайдер', 'провайдера', 'провайдеров') || ')'
@@ -392,7 +404,7 @@ SET plan_cache_mode = force_custom_plan
 AS $$
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_manager', 'grp_chief']);
-    PERFORM sec.check_report_period(p_from, p_to, NULL);
+    PERFORM sec.check_report_period(p_from, p_to, NULL, false);
     RETURN QUERY
     SELECT k.rnk::integer, s.id, s.name::text, st.name::text, k.volume_mb, k.revenue,
            round(100 * k.revenue / nullif(k.total, 0), 1)
@@ -413,7 +425,7 @@ COMMENT ON FUNCTION api.report_top_subscribers(date, date, integer, integer) IS
     'Отчёт «Крупнейшие абоненты» (ЛР 6): первые N абонентов по выручке за период — трафик, выручка, доля от выручки периода; руководитель — свой провайдер, аналитик — все или выбранный';
 
 -- ============================================================================ права
-REVOKE ALL ON FUNCTION sec.check_report_period(date, date, text), sec.period_title(text, date),
+REVOKE ALL ON FUNCTION sec.check_report_period(date, date, text, boolean), sec.period_title(text, date),
     sec.count_title(bigint, text, text, text) FROM PUBLIC;
 REVOKE ALL ON api.v_revenue_items, api.v_user_groups FROM PUBLIC;
 REVOKE ALL ON FUNCTION

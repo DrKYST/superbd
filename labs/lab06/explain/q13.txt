@@ -20,7 +20,17 @@ SELECT name, subscriber_type, city, phone, providers, total_count FROM api.q_sha
  Андреев Михаил Игоревич         | Частное лицо               | Мариуполь  | +7 949 808-51-29 |         2 |         590
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 10.027 ms  plan:
+duration: 0.017 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 11.709 ms  plan:
 Query Text: SELECT s.id, s.name::text, st.name::text, ci.name::text, s.address::text, s.phone::text,
            count(DISTINCT c.provider_id), count(*) OVER ()
     FROM core.subscriber s

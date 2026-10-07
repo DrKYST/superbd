@@ -20,7 +20,17 @@ SELECT display_name, city, contracts_active, total_count FROM api.q_providers(p_
  ООО «МегаСеть»     | Макеевка |              373 |          29
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 0.022 ms  plan:
+duration: 0.019 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 0.020 ms  plan:
 Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
 Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -32,7 +42,27 @@ Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
           ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
                 Buffers: shared hit=1
 
-duration: 0.012 ms  plan:
+duration: 0.008 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 0.010 ms  plan:
+Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
+Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
+  Buffers: shared hit=1
+  InitPlan 1
+    ->  Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=0) (actual rows=0.00 loops=1)
+          Filter: (reset_pending AND ((login)::text = SESSION_USER))
+          Rows Removed by Filter: 7
+          Buffers: shared hit=1
+
+duration: 0.010 ms  plan:
 Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
 Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -44,7 +74,7 @@ Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
           ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
                 Buffers: shared hit=1
 
-duration: 3.145 ms  plan:
+duration: 3.194 ms  plan:
 Query Text: SELECT v.id, v.display_name, v.ownership_type, v.city, v.address, v.phone, v.founded_year,
            coalesce(k.active, 0), coalesce(k.new_in_period, 0),
            count(*) OVER ()
@@ -64,34 +94,34 @@ Query Text: SELECT v.id, v.display_name, v.ownership_type, v.city, v.address, v.
     ORDER BY coalesce(k.active, 0) DESC, v.name
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
 Limit  (cost=481.12..481.12 rows=4 width=224) (actual rows=10.00 loops=1)
-  Buffers: shared hit=245
+  Buffers: shared hit=246
   ->  Sort  (cost=481.12..481.12 rows=4 width=224) (actual rows=10.00 loops=1)
         Sort Key: (COALESCE(k.active, '0'::bigint)) DESC, v.name
         Sort Method: top-N heapsort  Memory: 29kB
-        Buffers: shared hit=245
+        Buffers: shared hit=246
         ->  WindowAgg  (cost=480.54..481.07 rows=4 width=224) (actual rows=29.00 loops=1)
               Window: w1 AS ()
               Storage: Memory  Maximum Storage: 22kB
-              Buffers: shared hit=239
+              Buffers: shared hit=240
               ->  Hash Left Join  (cost=478.95..481.02 rows=4 width=216) (actual rows=29.00 loops=1)
                     Hash Cond: (v.id = k.provider_id)
-                    Buffers: shared hit=239
+                    Buffers: shared hit=240
                     ->  Subquery Scan on v  (cost=3.86..5.92 rows=4 width=200) (actual rows=29.00 loops=1)
                           Filter: (NOT (ANY (v.id = (hashed SubPlan 1).col1)))
                           Rows Removed by Filter: 2
-                          Buffers: shared hit=35
+                          Buffers: shared hit=36
                           ->  Hash Join  (cost=2.78..4.72 rows=9 width=206) (actual rows=31.00 loops=1)
                                 Hash Cond: (p.city_id = c.id)
-                                Buffers: shared hit=34
+                                Buffers: shared hit=35
                                 InitPlan 2
                                   ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
-                                        Buffers: shared hit=31
+                                        Buffers: shared hit=32
                                 ->  Hash Join  (cost=1.25..2.98 rows=9 width=104) (actual rows=31.00 loops=1)
                                       Hash Cond: (p.ownership_type_id = ot.id)
-                                      Buffers: shared hit=33
+                                      Buffers: shared hit=34
                                       ->  Seq Scan on provider p  (cost=0.00..1.70 rows=9 width=90) (actual rows=31.00 loops=1)
                                             Filter: (id = ANY ((InitPlan 2).col1))
-                                            Buffers: shared hit=32
+                                            Buffers: shared hit=33
                                       ->  Hash  (cost=1.11..1.11 rows=11 width=18) (actual rows=11.00 loops=1)
                                             Buckets: 1024  Batches: 1  Memory Usage: 9kB
                                             Buffers: shared hit=1
