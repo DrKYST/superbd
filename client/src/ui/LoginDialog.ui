@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Макет: docs/ui/screens/Main.png, docs/ui/mockup/Main.dc.html (окно 520×360). -->
+<ui version="4.0">
+ <class>LoginDialog</class>
+ <widget class="QDialog" name="LoginDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>520</width><height>360</height></rect>
+  </property>
+  <property name="windowTitle">
+   <string>Доступ к информационной базе</string>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="spacing"><number>10</number></property>
+   <property name="leftMargin"><number>20</number></property>
+   <property name="topMargin"><number>16</number></property>
+   <property name="rightMargin"><number>20</number></property>
+   <property name="bottomMargin"><number>16</number></property>
+   <item>
+    <widget class="QLabel" name="dialogHeading">
+     <property name="text"><string>Доступ к информационной базе «СуперБД»</string></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QGridLayout" name="credentialsLayout">
+     <property name="horizontalSpacing"><number>8</number></property>
+     <property name="verticalSpacing"><number>8</number></property>
+     <item row="0" column="0">
+      <widget class="QLabel" name="userLabel">
+       <property name="minimumSize"><size><width>110</width><height>0</height></size></property>
+       <property name="text"><string>Пользователь:</string></property>
+       <property name="buddy"><cstring>userEdit</cstring></property>
+       <property name="role" stdset="0"><string>caption</string></property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLineEdit" name="userEdit"/>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="passwordLabel">
+       <property name="text"><string>Пароль:</string></property>
+       <property name="buddy"><cstring>passwordEdit</cstring></property>
+       <property name="role" stdset="0"><string>caption</string></property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QLineEdit" name="passwordEdit">
+       <property name="echoMode"><enum>QLineEdit::Password</enum></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="connectionGroup">
+     <property name="title"><string>Параметры подключения</string></property>
+     <layout class="QGridLayout" name="connectionLayout">
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>8</number></property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="hostLabel">
+        <property name="minimumSize"><size><width>98</width><height>0</height></size></property>
+        <property name="text"><string>Сервер:</string></property>
+        <property name="buddy"><cstring>hostEdit</cstring></property>
+        <property name="role" stdset="0"><string>caption</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="hostEdit"/>
+      </item>
+      <item row="0" column="2">
+       <widget class="QLabel" name="portLabel">
+        <property name="minimumSize"><size><width>46</width><height>0</height></size></property>
+        <property name="text"><string>Порт:</string></property>
+        <property name="buddy"><cstring>portEdit</cstring></property>
+        <property name="role" stdset="0"><string>caption</string></property>
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <widget class="QLineEdit" name="portEdit">
+        <property name="minimumSize"><size><width>70</width><height>0</height></size></property>
+        <property name="maximumSize"><size><width>70</width><height>16777215</height></size></property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="databaseLabel">
+        <property name="text"><string>База данных:</string></property>
+        <property name="buddy"><cstring>databaseEdit</cstring></property>
+        <property name="role" stdset="0"><string>caption</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1" colspan="3">
+       <widget class="QLineEdit" name="databaseEdit"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="rememberCheck">
+     <property name="text"><string>Запомнить сервер, базу и пользователя (пароль не сохраняется)</string></property>
+     <property name="checked"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation"><enum>Qt::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property>
+    </spacer>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="buttonsLayout">
+     <property name="spacing"><number>6</number></property>
+     <item>
+      <spacer name="buttonsSpacer">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="okButton">
+       <property name="minimumSize"><size><width>90</width><height>0</height></size></property>
+       <property name="text"><string>ОК</string></property>
+       <property name="default"><bool>true</bool></property>
+       <property name="autoDefault"><bool>true</bool></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancelButton">
+       <property name="minimumSize"><size><width>90</width><height>0</height></size></property>
+       <property name="text"><string>Отмена</string></property>
+       <property name="autoDefault"><bool>false</bool></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <tabstops>
+  <tabstop>userEdit</tabstop>
+  <tabstop>passwordEdit</tabstop>
+  <tabstop>hostEdit</tabstop>
+  <tabstop>portEdit</tabstop>
+  <tabstop>databaseEdit</tabstop>
+  <tabstop>rememberCheck</tabstop>
+  <tabstop>okButton</tabstop>
+  <tabstop>cancelButton</tabstop>
+ </tabstops>
+ <resources/>
+ <connections/>
+</ui>

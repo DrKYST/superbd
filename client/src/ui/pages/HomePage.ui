@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Начальная страница: docs/ui/screens/Home*.png, docs/ui/mockup/Home.dc.html.
+     Сгенерирован по макету; содержимое блоков заполняет HomePage.cpp по роли. -->
+<ui version="4.0">
+ <class>HomePage</class>
+ <widget class="QWidget" name="HomePage">
+  <layout class="QVBoxLayout" name="formLayout">
+   <property name="spacing"><number>7</number></property>
+   <property name="leftMargin"><number>14</number></property>
+   <property name="topMargin"><number>8</number></property>
+   <property name="rightMargin"><number>14</number></property>
+   <property name="bottomMargin"><number>10</number></property>
+   <item>
+    <widget class="QLabel" name="formTitle">
+     <property name="text"><string>Начальная страница</string></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="columnsLayout" stretch="0,1">
+     <property name="spacing"><number>12</number></property>
+     <item>
+      <widget class="QWidget" name="leftColumn">
+       <property name="minimumSize"><size><width>700</width><height>0</height></size></property>
+       <property name="maximumSize"><size><width>700</width><height>16777215</height></size></property>
+       <layout class="QVBoxLayout" name="leftLayout">
+        <property name="spacing"><number>12</number></property>
+        <property name="leftMargin"><number>0</number></property>
+        <property name="topMargin"><number>0</number></property>
+        <property name="rightMargin"><number>0</number></property>
+        <property name="bottomMargin"><number>0</number></property>
+      <item>
+       <widget class="QFrame" name="roleBlock">
+        <property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Preferred"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+        <property name="role" stdset="0"><string>block</string></property>
+        <layout class="QVBoxLayout" name="roleBlockLayout">
+         <property name="spacing"><number>0</number></property>
+         <property name="leftMargin"><number>0</number></property>
+         <property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property>
+         <property name="bottomMargin"><number>0</number></property>
+         <item>
+          <widget class="QLabel" name="roleBlockTitle">
+           <property name="text"><string>Ваша роль</string></property>
+           <property name="role" stdset="0"><string>blockTitle</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="roleBody">
+           <layout class="QVBoxLayout" name="roleLayout">
+            <property name="spacing"><number>8</number></property>
+            <property name="leftMargin"><number>12</number></property>
+            <property name="topMargin"><number>10</number></property>
+            <property name="rightMargin"><number>12</number></property>
+            <property name="bottomMargin"><number>10</number></property>
+           </layout>
+          </widget>
+         </item>
+         
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QFrame" name="sectionsBlock">
+        <property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Expanding"><horstretch>0</horstretch><verstretch>1</verstretch></sizepolicy></property>
+        <property name="role" stdset="0"><string>block</string></property>
+        <layout class="QVBoxLayout" name="sectionsBlockLayout">
+         <property name="spacing"><number>0</number></property>
+         <property name="leftMargin"><number>0</number></property>
+         <property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property>
+         <property name="bottomMargin"><number>0</number></property>
+         <item>
+          <widget class="QLabel" name="sectionsBlockTitle">
+           <property name="text"><string>Ваши разделы</string></property>
+           <property name="role" stdset="0"><string>blockTitle</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="sectionsBody">
+           <layout class="QVBoxLayout" name="sectionsLayout">
+            <property name="spacing"><number>9</number></property>
+            <property name="leftMargin"><number>12</number></property>
+            <property name="topMargin"><number>10</number></property>
+            <property name="rightMargin"><number>12</number></property>
+            <property name="bottomMargin"><number>10</number></property>
+           </layout>
+          </widget>
+         </item>
+         <item><spacer name="sectionsSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property></spacer></item>
+        </layout>
+       </widget>
+      </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QWidget" name="rightColumn">
+       <layout class="QVBoxLayout" name="rightLayout">
+        <property name="spacing"><number>12</number></property>
+        <property name="leftMargin"><number>0</number></property>
+        <property name="topMargin"><number>0</number></property>
+        <property name="rightMargin"><number>0</number></property>
+        <property name="bottomMargin"><number>0</number></property>
+      <item>
+       <widget class="QFrame" name="todoBlock">
+        <property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Preferred"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+        <property name="role" stdset="0"><string>block</string></property>
+        <layout class="QVBoxLayout" name="todoBlockLayout">
+         <property name="spacing"><number>0</number></property>
+         <property name="leftMargin"><number>0</number></property>
+         <property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property>
+         <property name="bottomMargin"><number>0</number></property>
+         <item>
+          <widget class="QLabel" name="todoBlockTitle">
+           <property name="text"><string>Текущие дела</string></property>
+           <property name="role" stdset="0"><string>blockTitle</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="todoBody">
+           <layout class="QVBoxLayout" name="todoLayout">
+            <property name="spacing"><number>7</number></property>
+            <property name="leftMargin"><number>12</number></property>
+            <property name="topMargin"><number>10</number></property>
+            <property name="rightMargin"><number>12</number></property>
+            <property name="bottomMargin"><number>10</number></property>
+           </layout>
+          </widget>
+         </item>
+         
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QFrame" name="keysBlock">
+        <property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Preferred"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+        <property name="role" stdset="0"><string>block</string></property>
+        <layout class="QVBoxLayout" name="keysBlockLayout">
+         <property name="spacing"><number>0</number></property>
+         <property name="leftMargin"><number>0</number></property>
+         <property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property>
+         <property name="bottomMargin"><number>0</number></property>
+         <item>
+          <widget class="QLabel" name="keysBlockTitle">
+           <property name="text"><string>Быстрые клавиши</string></property>
+           <property name="role" stdset="0"><string>blockTitle</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="keysBody">
+           <layout class="QVBoxLayout" name="keysLayout">
+            <property name="spacing"><number>5</number></property>
+            <property name="leftMargin"><number>12</number></property>
+            <property name="topMargin"><number>10</number></property>
+            <property name="rightMargin"><number>12</number></property>
+            <property name="bottomMargin"><number>10</number></property>
+           </layout>
+          </widget>
+         </item>
+         
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QFrame" name="connBlock">
+        <property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Preferred"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+        <property name="role" stdset="0"><string>block</string></property>
+        <layout class="QVBoxLayout" name="connBlockLayout">
+         <property name="spacing"><number>0</number></property>
+         <property name="leftMargin"><number>0</number></property>
+         <property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property>
+         <property name="bottomMargin"><number>0</number></property>
+         <item>
+          <widget class="QLabel" name="connBlockTitle">
+           <property name="text"><string>Сведения о подключении</string></property>
+           <property name="role" stdset="0"><string>blockTitle</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="connBody">
+           <layout class="QVBoxLayout" name="connLayout">
+            <property name="spacing"><number>6</number></property>
+            <property name="leftMargin"><number>12</number></property>
+            <property name="topMargin"><number>10</number></property>
+            <property name="rightMargin"><number>12</number></property>
+            <property name="bottomMargin"><number>10</number></property>
+           </layout>
+          </widget>
+         </item>
+         
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QFrame" name="helpBlock">
+        <property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Expanding"><horstretch>0</horstretch><verstretch>1</verstretch></sizepolicy></property>
+        <property name="role" stdset="0"><string>block</string></property>
+        <layout class="QVBoxLayout" name="helpBlockLayout">
+         <property name="spacing"><number>0</number></property>
+         <property name="leftMargin"><number>0</number></property>
+         <property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property>
+         <property name="bottomMargin"><number>0</number></property>
+         <item>
+          <widget class="QLabel" name="helpBlockTitle">
+           <property name="text"><string>Справка</string></property>
+           <property name="role" stdset="0"><string>blockTitle</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QWidget" name="helpBody">
+           <layout class="QVBoxLayout" name="helpLayout">
+            <property name="spacing"><number>5</number></property>
+            <property name="leftMargin"><number>12</number></property>
+            <property name="topMargin"><number>10</number></property>
+            <property name="rightMargin"><number>12</number></property>
+            <property name="bottomMargin"><number>10</number></property>
+           </layout>
+          </widget>
+         </item>
+         <item><spacer name="helpSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property></spacer></item>
+        </layout>
+       </widget>
+      </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

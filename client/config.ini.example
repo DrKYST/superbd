@@ -1,6 +1,8 @@
-; Скопировать в config.ini рядом с exe. Пароль здесь НЕ хранится.
+; Скопировать в config.ini рядом с exe (клиент создаст его сам после первого входа).
+; Пароль здесь НЕ хранится.
 [database]
-host=localhost
+host=127.0.0.1
 port=5432
 dbname=superbd
 last_login=
+remember=true

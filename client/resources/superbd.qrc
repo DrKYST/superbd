@@ -1,0 +1,19 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <!-- Таблица стилей — единственный источник docs/ui/superbd.qss (макет ЛР 4). -->
+    <qresource prefix="/style">
+        <file alias="superbd.qss">../../docs/ui/superbd.qss</file>
+    </qresource>
+    <!-- Иконки панели разделов — пути SVG из макета (shell() в docs/ui/mockup/*.dc.html). -->
+    <qresource prefix="/">
+        <file>icons/app.svg</file>
+        <file>icons/home.svg</file>
+        <file>icons/card.svg</file>
+        <file>icons/activity.svg</file>
+        <file>icons/building.svg</file>
+        <file>icons/chart.svg</file>
+        <file>icons/table.svg</file>
+        <file>icons/users.svg</file>
+        <file>icons/book.svg</file>
+    </qresource>
+</RCC>
