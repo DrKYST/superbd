@@ -102,6 +102,11 @@ SELECT pg_temp.try('c_chiefprov',
            current_setting('test.prov')));
 SELECT pg_temp.try('c_dup',   $q$SELECT api.user_create('op_donnet', 'Тестов Олег Петрович', 'grp_chief')$q$);
 SELECT pg_temp.try('c_badlogin', $q$SELECT api.user_create('Tst-User', 'Тестов Олег Петрович', 'grp_chief')$q$);
+SELECT pg_temp.try('c_nologin', $q$SELECT api.user_create('tst_uchief3', 'Тестова Анна Ильинична', 'grp_chief', p_can_login => false)$q$);
+SELECT string_agg(group_name, ',' ORDER BY ord) AS mg_adm FROM api.v_manageable_groups \gset
+RESET SESSION AUTHORIZATION;
+SET SESSION AUTHORIZATION dba_main;
+SELECT string_agg(group_name, ',' ORDER BY ord) AS mg_dba FROM api.v_manageable_groups \gset
 RESET SESSION AUTHORIZATION;
 
 SET SESSION AUTHORIZATION dba_main;
@@ -132,6 +137,12 @@ SELECT pg_temp.check('10.12 провайдер обязателен операт
 SELECT pg_temp.check('10.13 занятый и неправильный логин отклоняются',
     current_setting('test.c_dup') LIKE '23505%' AND current_setting('test.c_badlogin') LIKE '22023%',
     current_setting('test.c_dup') || ' | ' || current_setting('test.c_badlogin'));
+
+SELECT pg_temp.check('10.13а «Вход разрешён» снят при создании — роль без права входа; список групп формы — управляемые группы',
+    current_setting('test.c_nologin') = 'ok'
+    AND NOT (SELECT rolcanlogin FROM pg_catalog.pg_roles WHERE rolname = 'tst_uchief3')
+    AND :'mg_adm' = 'grp_operator,grp_manager,grp_chief' AND :'mg_dba' = 'grp_admin',
+    current_setting('test.c_nologin') || ' | ' || :'mg_adm' || ' | ' || :'mg_dba');
 
 -- ============================================================================ 10.14–10.15 запрет входа
 

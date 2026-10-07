@@ -1,5 +1,6 @@
 #include "ui/pages/ProvidersPage.h"
 
+#include <QCheckBox>
 #include <QDate>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -45,6 +46,13 @@ ProvidersPage::ProvidersPage(const Whoami &me, bool readOnly, QWidget *parent)
     }
     QPushButton *find = bar.button(QStringLiteral("Найти…"));
     QPushButton *cancelFind = bar.button(QStringLiteral("Отменить поиск"));
+    if (!readOnly) {
+        // Запрос 16 (ЛР 6): провайдеры, у которых нет сотрудников, — чтобы завести операторов и руководителей.
+        bar.layout()->addSpacing(8);
+        m_withoutStaff = new QCheckBox(QStringLiteral("Без сотрудников"), this);
+        bar.layout()->addWidget(m_withoutStaff);
+        connect(m_withoutStaff, &QCheckBox::toggled, this, &ProvidersPage::reload);
+    }
     bar.stretch();
     m_search = bar.search();
     bar.more();
@@ -87,7 +95,15 @@ ProvidersPage::ProvidersPage(const Whoami &me, bool readOnly, QWidget *parent)
 
     connect(m_search, &QLineEdit::returnPressed, this, &ProvidersPage::reload);
     connect(find, &QPushButton::clicked, this, [this] { m_search->setFocus(); m_search->selectAll(); });
-    connect(cancelFind, &QPushButton::clicked, this, [this] { m_search->clear(); m_withoutNew = false; reload(); });
+    connect(cancelFind, &QPushButton::clicked, this, [this] {
+        m_search->clear();
+        m_withoutNew = false;
+        if (m_withoutStaff) {
+            const QSignalBlocker block(m_withoutStaff);
+            m_withoutStaff->setChecked(false);
+        }
+        reload();
+    });
     auto *ctrlF = new QShortcut(QKeySequence::Find, this);
     connect(ctrlF, &QShortcut::activated, this, [this] { m_search->setFocus(); m_search->selectAll(); });
     connect(m_providers, &DataGrid::currentChanged, this, [this](const QVariant &id) {
@@ -112,13 +128,18 @@ void ProvidersPage::reload()
     m_providers->setFilter({{QStringLiteral("p_from"), QDate(today.year(), today.month(), 1)},
                             {QStringLiteral("p_to"), today},
                             {QStringLiteral("p_search"), text.isEmpty() ? QVariant() : QVariant(text)},
-                            {QStringLiteral("p_without_new"), m_withoutNew}});
+                            {QStringLiteral("p_without_new"), m_withoutNew},
+                            {QStringLiteral("p_without_staff"), m_withoutStaff && m_withoutStaff->isChecked()}});
     m_providers->reloadFromStart();
 }
 
 void ProvidersPage::applyArgs(const QVariantMap &args)
 {
     m_withoutNew = args.value(QStringLiteral("without_new")).toBool();
+    if (m_withoutStaff) {
+        const QSignalBlocker block(m_withoutStaff);
+        m_withoutStaff->setChecked(args.value(QStringLiteral("without_staff")).toBool());
+    }
     reload();
 }
 

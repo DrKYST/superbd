@@ -140,6 +140,10 @@ FROM api.report_provider_shares('2026-01-01', '2026-09-30', 4, NULL) \gset
 -- 17: точки диаграммы — те же группы, сумма по точкам = «Итого»
 SELECT count(DISTINCT provider_group) AS q17_series, count(DISTINCT period) AS q17_months, sum(revenue) AS q17_rev_points
 FROM api.report_provider_shares('2026-01-01', '2026-09-30', 4, 'month') WHERE period IS NOT NULL \gset
+-- 17 с отбором «Тип абонента»: выручка «Итого» = отчёт 15б аналитика по всем провайдерам с тем же отбором
+SELECT max(revenue) FILTER (WHERE is_total) AS q17_type_total
+FROM api.report_provider_shares('2026-01-01', '2026-09-30', 4, NULL, 5) \gset
+SELECT revenue AS q15_type_total FROM api.report_revenue('2026-01-01', '2026-09-30', 'month', NULL, 5) WHERE period IS NULL \gset
 SELECT value AS t15_chief FROM api.home_todo() WHERE caption LIKE 'Выручка за %' \gset
 SELECT revenue AS q15_chief_month FROM api.report_revenue(date_trunc('month', current_date)::date, current_date) WHERE period IS NULL \gset
 
@@ -149,7 +153,7 @@ SELECT pg_temp.lr6_rights() AS r_adm \gset
 SELECT max(users) FILTER (WHERE group_name IS NULL) AS q11_all,
        sum(users) FILTER (WHERE group_name IS NOT NULL) AS q11_sum,
        (array_agg(title ORDER BY ord))[1] AS q11_first
-FROM (SELECT *, row_number() OVER () AS ord FROM api.v_user_groups) g \gset
+FROM api.v_user_groups g \gset
 SELECT max(total_count) AS q11_users FROM api.q_users(p_limit => 1) \gset
 SELECT max(total_count) AS q13_total, md5(string_agg(id::text, ',' ORDER BY id)) AS q13_md5,
        bool_and(providers >= 2) AS q13_ge2
@@ -220,6 +224,8 @@ SELECT pg_temp.check('12.13 запрос 17: выручка групп = «Ит�
 SELECT pg_temp.check('12.14 запрос 17: ряды диаграммы — те же 5 групп по 9 месяцам, сумма точек = «Итого»',
     :q17_series = 5 AND :q17_months = 9 AND :q17_rev_points = :q17_rev_total,
     format('рядов %s, месяцев %s', :q17_series, :q17_months));
+SELECT pg_temp.check('12.14а запрос 17 с отбором «Тип абонента» (вуз): «Итого» = выручка отчёта 15б с тем же отбором',
+    :q17_type_total = :q15_type_total AND :q17_type_total > 0, format('%s и %s', :q17_type_total, :q15_type_total));
 SELECT pg_temp.check('12.15 «Крупнейшие абоненты»: первые 5 по убыванию выручки, первый = независимый расчёт по провайдеру',
     :top_rows = 5 AND :'top_sorted' = 't' AND :top1 = :e_top1, format('%s и %s', :top1, :e_top1));
 SELECT pg_temp.check('12.16 параметры отчёта: неверная периодичность и перевёрнутый период — понятные ошибки',

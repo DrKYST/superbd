@@ -58,13 +58,23 @@ END $$;
 COMMENT ON FUNCTION api.q_users(text, text, integer, integer) IS
     'Пользователи системы видимых групп: логин, ФИО, группа, провайдер, вход разрешён, срок пароля, дата регистрации, можно ли управлять (D26)';
 
+-- Группы, учётные записи которых создаёт текущий пользователь, — список «Группа» формы «Пользователь».
+CREATE OR REPLACE VIEW api.v_manageable_groups AS
+SELECT g.grp::text AS group_name, sec.group_title(g.grp) AS title, g.ord::integer AS ord
+FROM unnest(sec.manageable_groups(sec.current_group())) WITH ORDINALITY AS g(grp, ord);
+COMMENT ON VIEW api.v_manageable_groups IS
+    'Группы, учётные записи которых создаёт и блокирует текущий администратор (D26): список «Группа» формы «Пользователь»';
+
 -- Создать пользователя управляемой группы. Пароль не задаётся (вход до сброса пароля невозможен, D27).
+-- p_can_login — флажок «Вход разрешён» формы: false — учётная запись создаётся с запрещённым входом (NOLOGIN).
 DROP FUNCTION IF EXISTS api.user_create(text, text, text, integer);
+DROP FUNCTION IF EXISTS api.user_create(text, text, text, integer, boolean);
 CREATE OR REPLACE FUNCTION api.user_create(
     p_login text,
     p_full_name text,
     p_group text,
-    p_provider_id integer DEFAULT NULL)
+    p_provider_id integer DEFAULT NULL,
+    p_can_login boolean DEFAULT true)
 RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -93,6 +103,9 @@ BEGIN
         RAISE EXCEPTION 'Логин: от 3 до 31 символа, латинские строчные буквы, цифры и «_», начинается с буквы'
             USING ERRCODE = '22023';
     END;
+    IF nullif(btrim(p_full_name), '') IS NULL THEN
+        RAISE EXCEPTION 'Укажите ФИО' USING ERRCODE = '22023';
+    END IF;
     IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = v_login) THEN
         RAISE EXCEPTION 'Логин «%» уже занят', v_login USING ERRCODE = '23505';
     END IF;
@@ -104,11 +117,15 @@ BEGIN
     INSERT INTO sec.app_user (provider_id, login, full_name)
     VALUES (p_provider_id, v_login, btrim(p_full_name))
     RETURNING sec.app_user.id INTO v_id;
+    -- «Вход разрешён» снят: право входа убирается после строки сотрудника (триггер 045 проверяет роль с правом входа)
+    IF NOT coalesce(p_can_login, true) THEN
+        EXECUTE format('ALTER ROLE %I NOLOGIN', v_login);
+    END IF;
     RETURN v_id;
 EXCEPTION WHEN foreign_key_violation THEN
     RAISE EXCEPTION 'Провайдер не найден' USING ERRCODE = '22023';
 END $$;
-COMMENT ON FUNCTION api.user_create(text, text, text, integer) IS
+COMMENT ON FUNCTION api.user_create(text, text, text, integer, boolean) IS
     'Новый пользователь: LOGIN-роль PostgreSQL без пароля, членство в группе, строка «Сотрудник»; только для управляемых групп (D26), пароль — сбросом пароля (D27)';
 
 -- Разрешить или запретить вход пользователю управляемой группы (не себе).
@@ -222,11 +239,13 @@ END $$;
 COMMENT ON FUNCTION api.db_connections() IS
     'Подключения к базе: пользователь, программа, адрес, начало сеанса, состояние, ожидание, текущий запрос; только администратор БД (D26)';
 
-REVOKE ALL ON FUNCTION api.q_users(text, text, integer, integer), api.user_create(text, text, text, integer),
+REVOKE ALL ON FUNCTION api.q_users(text, text, integer, integer), api.user_create(text, text, text, integer, boolean),
     api.user_set_login(text, boolean), api.q_change_log(date, date, text, text, text, integer, integer),
     api.db_tables(), api.db_connections() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION api.q_users(text, text, integer, integer), api.user_create(text, text, text, integer),
+GRANT EXECUTE ON FUNCTION api.q_users(text, text, integer, integer), api.user_create(text, text, text, integer, boolean),
     api.user_set_login(text, boolean) TO grp_admin, grp_dba;
+REVOKE ALL ON api.v_manageable_groups FROM PUBLIC;
+GRANT SELECT ON api.v_manageable_groups TO grp_admin, grp_dba;
 GRANT EXECUTE ON FUNCTION api.q_change_log(date, date, text, text, text, integer, integer),
     api.db_tables(), api.db_connections() TO grp_dba;
 -- db_connections выполняется от имени пользователя: ему нужен доступ к функциям проверки группы.

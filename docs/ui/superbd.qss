@@ -19,6 +19,7 @@ QLabel#userSeparator { color: #9a9a9a; font-size: 9pt; }
 #navPanel QPushButton[role="link"] { border: none; background: transparent; color: #1a5ba6; text-align: left; padding: 3px 12px 3px 20px; }
 #navPanel QPushButton[role="link"]:hover { text-decoration: underline; }
 #navPanel QPushButton[role="link"]:checked { font-weight: bold; color: #333333; background: #efefef; }
+#navPanel QPushButton[role="link"][multiline="true"] { min-height: 36px; max-height: 36px; }   /* «Новые договоры по типам / абонентов» */
 
 /* Вкладки открытых окон: полоса #windowTabs (QWidget) с QTabBar над QStackedWidget */
 #windowTabs { background: #e9e9e9; border-bottom: 1px solid #bdbdbd; min-height: 27px; max-height: 27px; }
@@ -89,3 +90,14 @@ QTableView::item { border: none; padding: 0 4px; }
 QTableView::item:selected, QTableView::item:selected:!active { background: #fbe7a1; color: #333333; }
 QPushButton#periodButton::menu-indicator { image: none; width: 0; }
 
+
+/* Табличный документ отчёта (Stats.dc.html: .doc, .chart, .legend) */
+QScrollArea#reportArea { border: none; background: transparent; }
+QFrame#reportDocument { background: #ffffff; border: 1px solid #cfcfcf; }
+QLabel#reportTitle { font-size: 11pt; font-weight: bold; color: #333333; }
+QLabel#reportLine { font-size: 9pt; color: #333333; }
+QFrame#chartFrame, QFrame#legendFrame { background: #ffffff; border: 1px solid #cfcfcf; }
+QFrame#legendFrame QLabel { font-size: 9pt; color: #333333; }
+
+/* Панель групп «Пользователей» (Users.dc.html) */
+QTableView#groupPanel { border: 1px solid #b8b8b8; }

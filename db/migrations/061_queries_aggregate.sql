@@ -111,7 +111,10 @@ CREATE OR REPLACE VIEW api.v_user_groups WITH (security_barrier = true) AS
 SELECT CASE WHEN grouping(g.rolname) = 1 THEN 'Все пользователи'
             ELSE sec.group_title(g.rolname::text) END AS title,
        g.rolname::text AS group_name,                                   -- NULL у строки «Все пользователи»
-       count(*) AS users
+       count(*) AS users,
+       CASE WHEN grouping(g.rolname) = 1 THEN 0                         -- порядок строк панели: «Все пользователи» первой
+            ELSE array_position(ARRAY['grp_dba', 'grp_admin', 'grp_chief', 'grp_manager', 'grp_operator']::name[],
+                                g.rolname) END AS ord
 FROM sec.app_user u
 JOIN pg_catalog.pg_roles r        ON r.rolname = u.login
 JOIN pg_catalog.pg_auth_members m ON m.member = r.oid AND m.inherit_option
@@ -119,8 +122,7 @@ JOIN pg_catalog.pg_roles g        ON g.oid = m.roleid
 -- разграничение доступа: только группы, видимые роли (функция вызывается один раз)
 WHERE g.rolname = ANY ((SELECT sec.visible_groups(sec.current_group()))::name[])
 GROUP BY ROLLUP (g.rolname)
-ORDER BY grouping(g.rolname) DESC,                                      -- «Все пользователи» первой, как в макете
-         array_position(ARRAY['grp_dba', 'grp_admin', 'grp_chief', 'grp_manager', 'grp_operator']::name[], g.rolname);
+ORDER BY ord;
 COMMENT ON VIEW api.v_user_groups IS
     'Запрос 11 (ЛР 6). Пользователи по группам: строка «Все пользователи» и число пользователей каждой видимой группы (GROUP BY ROLLUP); администраторы приложения и БД (D26)';
 
@@ -295,12 +297,15 @@ COMMENT ON FUNCTION api.report_revenue(date, date, text, integer, integer) IS
 -- «Договоров» — действующих на конец периода (в макете сумма столбца = счётчику «Действующих договоров»).
 -- Строки с period IS NULL — таблица (последняя — «Итого», is_total), с периодом — точки рядов диаграммы
 -- (p_grain IS NULL — только таблица). ord — номер группы: 1…p_top, p_top + 1 — «Прочие», p_top + 2 — «Итого».
+-- Отбор «Тип абонента» (макет Stats_Chief) — по выручке и договорам абонентов этого типа.
 DROP FUNCTION IF EXISTS api.report_provider_shares(date, date, integer, text);
+DROP FUNCTION IF EXISTS api.report_provider_shares(date, date, integer, text, integer);
 CREATE OR REPLACE FUNCTION api.report_provider_shares(
     p_from date,
     p_to date,
     p_top integer DEFAULT 4,
-    p_grain text DEFAULT 'month')
+    p_grain text DEFAULT 'month',
+    p_subscriber_type_id integer DEFAULT NULL)
 RETURNS TABLE (
     ord integer, provider_group text, providers bigint, period date, period_title text,
     contracts bigint, volume_mb numeric, revenue numeric, share_pct numeric, is_total boolean)
@@ -326,10 +331,14 @@ BEGIN
         LEFT JOIN (SELECT i.provider_id, sum(i.volume_mb) AS volume_mb, sum(i.amount) AS revenue
                    FROM api.v_revenue_items i
                    WHERE i.at >= p_from AND i.at < p_to + 1
+                     AND (p_subscriber_type_id IS NULL OR i.subscriber_type_id = p_subscriber_type_id)
                    GROUP BY i.provider_id) r ON r.provider_id = p.id
         LEFT JOIN (SELECT c.provider_id, count(*) AS contracts
                    FROM core.contract c
                    WHERE c.connected_on <= p_to AND (c.closed_on IS NULL OR c.closed_on > p_to)
+                     AND (p_subscriber_type_id IS NULL
+                          OR c.subscriber_id IN (SELECT s.id FROM core.subscriber s
+                                                 WHERE s.subscriber_type_id = p_subscriber_type_id))
                    GROUP BY c.provider_id) k ON k.provider_id = p.id),
     t AS (                 -- группы «первые N» и «Прочие» и строка «Итого» (ROLLUP)
         SELECT coalesce(x.grp, v_top + 2) AS ord,
@@ -352,12 +361,13 @@ BEGIN
     FROM x
     JOIN t ON t.ord = x.grp
     JOIN api.v_revenue_items i ON i.provider_id = x.id AND i.at >= p_from AND i.at < p_to + 1
+                              AND (p_subscriber_type_id IS NULL OR i.subscriber_type_id = p_subscriber_type_id)
     CROSS JOIN LATERAL (SELECT date_trunc(p_grain, i.at)::date AS period) d
     WHERE p_grain IS NOT NULL
     GROUP BY x.grp, t.provider_group, t.providers, d.period
     ORDER BY 4 NULLS FIRST, 1;
 END $$;
-COMMENT ON FUNCTION api.report_provider_shares(date, date, integer, text) IS
+COMMENT ON FUNCTION api.report_provider_shares(date, date, integer, text, integer) IS
     'Запрос 17 (ЛР 6). Доли провайдеров в выручке за период: первые N по выручке и «Прочие» (CASE над местом из подзапроса), договоров, трафик, выручка, доля от общего итога, «Итого»; ряды по периодам для диаграммы; только главный аналитик';
 
 -- ============================================================================ Крупнейшие абоненты
@@ -409,7 +419,7 @@ REVOKE ALL ON FUNCTION
     api.q_shared_subscribers(integer, integer, integer),
     api.q_idle_contracts(integer, integer, integer),
     api.report_revenue(date, date, text, integer, integer),
-    api.report_provider_shares(date, date, integer, text),
+    api.report_provider_shares(date, date, integer, text, integer),
     api.report_top_subscribers(date, date, integer, integer)
 FROM PUBLIC;
 
@@ -422,7 +432,7 @@ GRANT EXECUTE ON FUNCTION
     api.report_revenue(date, date, text, integer, integer),
     api.report_top_subscribers(date, date, integer, integer)
 TO grp_manager, grp_chief;
-GRANT EXECUTE ON FUNCTION api.report_provider_shares(date, date, integer, text) TO grp_chief;
+GRANT EXECUTE ON FUNCTION api.report_provider_shares(date, date, integer, text, integer) TO grp_chief;
 GRANT EXECUTE ON FUNCTION api.q_idle_contracts(integer, integer, integer) TO grp_operator, grp_manager;
 GRANT EXECUTE ON FUNCTION api.q_shared_subscribers(integer, integer, integer) TO grp_admin;
 

@@ -6,6 +6,7 @@
 #include "db/Db.h"
 
 class DataGrid;
+class QCheckBox;
 class QLabel;
 class QLineEdit;
 
@@ -18,7 +19,8 @@ class ProvidersPage : public QWidget {
 public:
     ProvidersPage(const Whoami &me, bool readOnly, QWidget *parent = nullptr);
 
-    // without_new = true: «Провайдеры без новых договоров в …» (начальная страница аналитика).
+    // without_new = true: «Провайдеры без новых договоров в …» (начальная страница аналитика);
+    // without_staff = true: «Провайдеры без сотрудников» (начальная страница администратора, запрос 16).
     Q_INVOKABLE void applyArgs(const QVariantMap &args);
 
 signals:
@@ -28,6 +30,7 @@ private:
     void reload();
 
     bool m_withoutNew = false;
+    QCheckBox *m_withoutStaff = nullptr;    // отбор «Без сотрудников» (администратор)
     QLineEdit *m_search;
     DataGrid *m_providers;
     QLabel *m_staffCaption;

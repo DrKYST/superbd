@@ -11,12 +11,16 @@
 #include <QToolButton>
 
 #include "ui/pages/ContractsPage.h"
+#include "ui/dialogs/UserDialog.h"
 #include "ui/pages/HomePage.h"
+#include "ui/pages/ListPages.h"
 #include "ui/pages/PlaceholderPage.h"
 #include "ui/pages/ProvidersPage.h"
+#include "ui/pages/ReportPage.h"
 #include "ui/pages/SessionsPage.h"
 #include "ui/pages/SubscribersPage.h"
 #include "ui/pages/TariffUsagePage.h"
+#include "ui/pages/UsersPage.h"
 
 namespace {
 
@@ -29,7 +33,6 @@ QString mockupScreen(const QString &form)
         {QStringLiteral("subscribers"), QStringLiteral("Subscribers")},
         {QStringLiteral("sessions"), QStringLiteral("Sessions")},
         {QStringLiteral("report_revenue"), QStringLiteral("Stats")},
-        {QStringLiteral("users"), QStringLiteral("Users")},
         {QStringLiteral("tariffs"), QStringLiteral("Refs")},
         {QStringLiteral("providers"), QStringLiteral("Providers")},
     };
@@ -177,6 +180,8 @@ void MainWindow::buildNav(const Section &section)
             b->setProperty(kFormProperty, link.form);
             b->setCheckable(true);
             b->setCursor(Qt::PointingHandCursor);
+            if (link.title.contains(QLatin1Char('\n')))     // ссылка в две строки (как в макете): высота — в superbd.qss
+                b->setProperty("multiline", true);
             b->setFocusPolicy(Qt::NoFocus);
             const QString form = link.form;
             connect(b, &QPushButton::clicked, this, [this, form] { openForm(form); });
@@ -198,7 +203,13 @@ void MainWindow::syncNavWithCurrentTab()
 
 void MainWindow::openForm(const QString &form)
 {
-    openFormWithArgs(form, {});
+    // Счётчики начальной страницы, открывающие форму с отбором (api.home_todo, поле form).
+    if (form == QLatin1String("providers_without_staff"))
+        openFormWithArgs(QStringLiteral("providers"), {{QStringLiteral("without_staff"), true}});
+    else if (form == QLatin1String("providers_without_new"))
+        openFormWithArgs(QStringLiteral("providers"), {{QStringLiteral("without_new"), true}});
+    else
+        openFormWithArgs(form, {});
 }
 
 void MainWindow::openFormWithArgs(const QString &form, const QVariantMap &args)
@@ -278,6 +289,19 @@ QWidget *MainWindow::createPage(const QString &form)
         return new MyProviderPage(m_me, ui->pages);
     if (form == QLatin1String("report_traffic"))
         return new TariffUsagePage(m_me, ui->pages);
+    // Отчёты «Статистики» и списки ЛР 6
+    if (form == QLatin1String("report_revenue"))
+        return new ReportPage(m_me, ReportPage::Revenue, ui->pages);
+    if (form == QLatin1String("report_new_contracts"))
+        return new ReportPage(m_me, ReportPage::NewContracts, ui->pages);
+    if (form == QLatin1String("report_top_subscribers"))
+        return new ReportPage(m_me, ReportPage::TopSubscribers, ui->pages);
+    if (form == QLatin1String("users"))
+        return new UsersPage(m_me, ui->pages);
+    if (form == QLatin1String("shared_subscribers"))
+        return new SharedSubscribersPage(ui->pages);
+    if (form == QLatin1String("idle_contracts"))
+        return new IdleContractsPage(m_me, ui->pages);
     return new PlaceholderPage(RoleConfig::formTitle(form), mockupScreen(form), ui->pages);
 }
 
@@ -289,6 +313,13 @@ void MainWindow::openDialog(const QString &form)
                                           "Курсовой проект по дисциплине «Программирование систем с серверами баз данных», "
                                           "вариант Б-16.<br>Клиент: Qt %1, сервер: %2.")
                                .arg(QString::fromLatin1(qVersion()), m_me.serverVersion));
+        return;
+    }
+    if (form == QLatin1String("new_user")) {
+        UserDialog dialog(this);
+        dialog.exec();
+        if (dialog.created())
+            openFormWithArgs(QStringLiteral("users"), {{QStringLiteral("refresh"), true}});
         return;
     }
     statusBar()->showMessage(QStringLiteral("Форма «%1» будет добавлена на следующем этапе разработки клиента.")

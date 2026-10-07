@@ -49,7 +49,7 @@ QList<NavGroup> statsNav()
 {
     return {group(QStringLiteral("Статистика"), {{QStringLiteral("Выручка по периодам"), QStringLiteral("report_revenue")},
                                                  {QStringLiteral("Трафик по тарифам"), QStringLiteral("report_traffic")},
-                                                 {QStringLiteral("Новые договоры по типам абонентов"), QStringLiteral("report_new_contracts")},
+                                                 {QStringLiteral("Новые договоры по типам\nабонентов"), QStringLiteral("report_new_contracts")},
                                                  {QStringLiteral("Крупнейшие абоненты"), QStringLiteral("report_top_subscribers")}}),
             group(QStringLiteral("См. также"), {{QStringLiteral("Абоненты"), QStringLiteral("subscribers")}})};
 }
@@ -67,14 +67,15 @@ QList<NavGroup> chiefProvidersNav()
 }
 
 // adminNav() из Users.dc.html / Refs.dc.html / Providers.dc.html — одна навигация на три раздела.
-// Журнал изменений перешёл к администратору БД (D26).
+// Журнал изменений перешёл к администратору БД (D26); «Общие абоненты» — запрос 13 ЛР 6 (D25, D28), в макете нет.
 QList<NavGroup> adminNav()
 {
     return {group(QStringLiteral("Администрирование"), {{QStringLiteral("Пользователи"), QStringLiteral("users")}}),
             group(QStringLiteral("Справочники"), {{QStringLiteral("Типы собственности"), QStringLiteral("ref_ownership_types")},
                                                   {QStringLiteral("Города"), QStringLiteral("ref_cities")},
                                                   {QStringLiteral("Типы абонентов"), QStringLiteral("ref_subscriber_types")},
-                                                  {QStringLiteral("Тарифы"), QStringLiteral("tariffs")}}),
+                                                  {QStringLiteral("Тарифы"), QStringLiteral("tariffs")},
+                                                  {QStringLiteral("Общие абоненты"), QStringLiteral("shared_subscribers")}}),
             group(QStringLiteral("Провайдеры"), {{QStringLiteral("Провайдеры"), QStringLiteral("providers")}})};
 }
 
@@ -148,6 +149,8 @@ QString RoleConfig::formTitle(const QString &form)
         {QStringLiteral("ref_cities"), QStringLiteral("Города")},
         {QStringLiteral("ref_subscriber_types"), QStringLiteral("Типы абонентов")},
         {QStringLiteral("tariffs"), QStringLiteral("Тарифы")},
+        {QStringLiteral("shared_subscribers"), QStringLiteral("Общие абоненты")},
+        {QStringLiteral("idle_contracts"), QStringLiteral("Договоры без сеансов")},
         {QStringLiteral("new_subscriber"), QStringLiteral("Абонент (создание)")},
         {QStringLiteral("new_contract"), QStringLiteral("Договор (создание)")},
         {QStringLiteral("new_session"), QStringLiteral("Сеанс связи (создание)")},

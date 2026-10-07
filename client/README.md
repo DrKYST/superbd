@@ -18,7 +18,12 @@
 | «Провайдеры», «Мой провайдер» | `src/ui/pages/ProvidersPage.*` — запросы 10, 1, 5 |
 | Карточки договора и абонента, формы выбора | `src/ui/dialogs/` — запросы 7 (+2 на вкладке «Сеансы»), 6; `PickerDialog` |
 | Общие элементы форм | `src/ui/widgets/FormKit.*` (заголовок, командная панель, поле «…»), `DataGrid.*` (таблица + модель + страницы) |
-| Остальные формы (отчёты, пользователи, справочники) | временная заглушка `src/ui/pages/PlaceholderPage.*`; создание и изменение записей — этап CRUD |
+| «Статистика» (ЛР 6, 07.10): «Выручка по периодам» (у главного аналитика без отбора — доли провайдеров), «Новые договоры по типам абонентов», «Крупнейшие абоненты» — табличный документ с диаграммой, «Сохранить в Excel…», «Печать» | `src/ui/pages/ReportPage.*` — запросы 15б, 17, 12, «Крупнейшие абоненты»; `src/charts/ReportChart.*` (Qt Charts), `src/export/ExcelExport.*` (QXlsx) |
+| «Трафик по тарифам» | `src/ui/pages/TariffUsagePage.*` — запрос 9, «Сохранить в Excel…» |
+| «Пользователи» (оба администратора) и форма «Пользователь (создание)» | `src/ui/pages/UsersPage.*` — панель групп (запрос 11), `api.q_users`, «Запретить/Разрешить вход»; `src/ui/dialogs/UserDialog.*` — `api.user_create` |
+| «Общие абоненты» (администратор), «Договоры без сеансов» (оператор, руководитель; по счётчику) | `src/ui/pages/ListPages.*` — запросы 13, 14 |
+| Отбор «Без сотрудников» на «Провайдерах» (по счётчику администратора) | `src/ui/pages/ProvidersPage.*` — запрос 16 |
+| Остальные формы (справочники, экраны администратора БД) | временная заглушка `src/ui/pages/PlaceholderPage.*`; создание и изменение записей — этап CRUD |
 
 Отличия от макета — `docs/ui/deviations.md`.
 
@@ -35,6 +40,8 @@ cmake -S client -B client/build -G Ninja -DCMAKE_PREFIX_PATH=C:/msys64/ucrt64 -D
 ```powershell
 cmake --build client/build
 ```
+
+Зависимости из MSYS2, кроме Qt: `mingw-w64-ucrt-x86_64-qt6-charts`, `mingw-w64-ucrt-x86_64-qxlsx` (в пакете qxlsx 1.5.1-1 нет заголовка `xlsxreadsax.h` — объявления-заглушки в `src/export/compat/`).
 
 Запуск: `client\build\superbd.exe` (в `PATH` должен быть `C:\msys64\ucrt64\bin` — там Qt, `libpq.dll` и плагин `qsqlpsql`). Для запуска на другом компьютере — `windeployqt6 client\build\superbd.exe` и `libpq.dll` с зависимостями рядом с exe.
 

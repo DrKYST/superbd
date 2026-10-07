@@ -93,7 +93,7 @@ BEGIN
                    (SELECT count(*) FROM core.provider p
                     WHERE NOT EXISTS (SELECT 1 FROM core.contract c
                                       WHERE c.provider_id = p.id AND c.connected_on >= v_month))::numeric,
-                   'providers'
+                   'providers_without_new'
             WHERE v_group = 'grp_chief'
         ) t
         ORDER BY t.ord;

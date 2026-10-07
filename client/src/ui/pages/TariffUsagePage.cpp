@@ -12,6 +12,7 @@
 #include <QVBoxLayout>
 
 #include "db/ApiCall.h"
+#include "export/ExcelExport.h"
 #include "ui/widgets/DataGrid.h"
 #include "ui/widgets/FormKit.h"
 
@@ -22,8 +23,7 @@ TariffUsagePage::TariffUsagePage(const Whoami &me, QWidget *parent)
 
     FormKit::CommandBar bar(this);
     QPushButton *make = bar.button(QStringLiteral("Сформировать"), true);
-    connect(bar.button(QStringLiteral("Сохранить в Excel…")), &QPushButton::clicked, this,
-            [this] { FormKit::status(this, QStringLiteral("Сохранение в Excel появится вместе с отчётами «Статистики».")); });
+    connect(bar.button(QStringLiteral("Сохранить в Excel…")), &QPushButton::clicked, this, &TariffUsagePage::exportExcel);
     bar.stretch();
     bar.more();
     layout->addLayout(bar.layout());
@@ -53,6 +53,7 @@ TariffUsagePage::TariffUsagePage(const Whoami &me, QWidget *parent)
         row->addWidget(m_provider);
     } else {
         // Руководитель: отбор по провайдеру зафиксирован (ограничение — в функции на сервере).
+        m_providerName = me.providerName;
         auto *fixed = FormKit::readOnlyField(me.providerName, box);
         fixed->setFixedWidth(240);
         row->addWidget(fixed);
@@ -87,4 +88,15 @@ void TariffUsagePage::build()
         params << ApiParam{QStringLiteral("p_provider_id"), m_provider->currentData()};
     m_grid->setFilter(params);
     m_grid->reloadFromStart();
+}
+
+void TariffUsagePage::exportExcel()
+{
+    const QString provider = m_provider ? m_provider->currentText() : m_providerName;
+    ExcelExport::save(this, QStringLiteral("Трафик по тарифам"),
+                      {QStringLiteral("Трафик по тарифам"),
+                       QStringLiteral("Период: %1 – %2").arg(m_from->date().toString(QStringLiteral("dd.MM.yyyy")),
+                                                             m_to->date().toString(QStringLiteral("dd.MM.yyyy"))),
+                       QStringLiteral("Отбор: провайдер — %1").arg(provider)},
+                      m_grid->model());
 }

@@ -7,6 +7,7 @@
 #include <QSqlQuery>
 #include <QSqlRecord>
 
+#include "export/ExcelExport.h"
 #include "ui/Theme.h"
 
 PagedTableModel::PagedTableModel(QObject *parent)
@@ -166,7 +167,7 @@ QString PagedTableModel::format(const ColumnSpec &col, const QVariant &value)
     case ColumnSpec::DateTime:
         return value.toDateTime().toLocalTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"));
     case ColumnSpec::Bool:
-        return value.toBool() ? QStringLiteral("✓") : QString();
+        return value.toBool() ? QStringLiteral("✓") : QStringLiteral("—");     // Users.dc.html: ok ? '✓' : '—'
     case ColumnSpec::Text:
     case ColumnSpec::TextRight:
         break;
@@ -194,6 +195,10 @@ QVariant PagedTableModel::data(const QModelIndex &index, int role) const
                        : Qt::AlignLeft | Qt::AlignVCenter);
     case Qt::UserRole:
         return totals ? QVariant() : rowId(index.row());
+    case ExcelExport::ExportRole:      // значение как пришло с сервера — для «Сохранить в Excel…»
+        if (totals || col.kind == ColumnSpec::Bool)
+            break;
+        return m_rows.at(index.row()).value(col.field);
     case Qt::ForegroundRole:
         if (!totals && !col.okValue.isEmpty()
             && m_rows.at(index.row()).value(col.field).toString() == col.okValue)
