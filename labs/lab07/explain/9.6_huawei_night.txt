@@ -1,0 +1,115 @@
+Запрос 9.6_huawei_night (09_optimize.sql)
+Раздел задания: два сравнения #>> = → предикат jsonpath @@ (GIN jsonb_path_ops)
+Зачем: Аналитик проверяет тарификацию Huawei (запрос 4.1): сеансы по тарифу «Выходной ночной» на узлах Huawei в 2026 году по месяцам
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL: исходная форма («до»)
+SELECT date_trunc('month', (doc #>> '{session,started_at}')::timestamptz)::date AS month,
+       count(*) AS sessions, sum((doc #>> '{billing,cost}')::numeric) AS cost
+FROM lab7.session_record
+WHERE doc #>> '{source,nas,vendor}' = 'Huawei'
+  AND doc #>> '{billing,tariff,code}' = 'ВН'
+  AND (doc #>> '{session,started_at}')::timestamptz >= :'q_year_from'
+GROUP BY 1
+ORDER BY 1;
+
+-- SQL: оптимизированная форма («после»)
+SELECT date_trunc('month', (doc #>> '{session,started_at}')::timestamptz)::date AS month,
+       count(*) AS sessions, sum((doc #>> '{billing,cost}')::numeric) AS cost
+FROM lab7.session_record
+WHERE doc @@ '$.source.nas.vendor == "Huawei" && $.billing.tariff.code == "ВН"'
+  AND (doc #>> '{session,started_at}')::timestamptz >= :'q_year_from'
+GROUP BY 1
+ORDER BY 1;
+
+-- Результат (первые строки)
+   month    | sessions |  cost   
+------------+----------+---------
+ 2026-01-01 |      105 | 2674.98
+ 2026-02-01 |      100 | 3032.57
+ 2026-03-01 |      109 | 3141.35
+ 2026-04-01 |      112 | 2014.57
+ 2026-05-01 |      136 | 3444.60
+ 2026-06-01 |      115 | 2604.76
+ 2026-07-01 |      161 | 3892.05
+ 2026-08-01 |      229 | 5745.40
+ 2026-09-01 |      244 | 5894.32
+ 2026-10-01 |       87 | 2102.75
+
+Результаты исходной и оптимизированной форм совпадают: да
+
+-- План «до»: исходная форма, без индексов (DROP INDEX в транзакции с откатом), второй прогон
+GroupAggregate  (cost=22173.43..22173.48 rows=1 width=44) (actual time=38.067..42.310 rows=10.00 loops=1)
+  Group Key: ((date_trunc('month'::text, ((doc #>> '{session,started_at}'::text[]))::timestamp with time zone))::date)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=22173.43..22173.44 rows=1 width=1426) (actual time=37.983..41.659 rows=1398.00 loops=1)
+        Sort Key: ((date_trunc('month'::text, ((doc #>> '{session,started_at}'::text[]))::timestamp with time zone))::date)
+        Sort Method: quicksort  Memory: 2029kB
+        Buffers: shared hit=19923
+        ->  Gather  (cost=1000.00..22173.42 rows=1 width=1426) (actual time=12.495..40.826 rows=1398.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=19923
+              ->  Parallel Seq Scan on session_record  (cost=0.00..21173.33 rows=1 width=1426) (actual time=4.132..17.074 rows=466.00 loops=3)
+                    Filter: (((doc #>> '{source,nas,vendor}'::text[]) = 'Huawei'::text) AND ((doc #>> '{billing,tariff,code}'::text[]) = 'ВН'::text) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-01-01 00:00:00+03'::timestamp with time zone))
+                    Rows Removed by Filter: 32876
+                    Buffers: shared hit=19923
+Planning Time: 0.073 ms
+Execution Time: 42.448 ms
+
+-- План исходной формы при наличии индексов (применим ли индекс без переписывания)
+GroupAggregate  (cost=22173.43..22173.48 rows=1 width=44) (actual time=48.915..51.740 rows=10.00 loops=1)
+  Group Key: ((date_trunc('month'::text, ((doc #>> '{session,started_at}'::text[]))::timestamp with time zone))::date)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=22173.43..22173.44 rows=1 width=1426) (actual time=48.835..51.234 rows=1398.00 loops=1)
+        Sort Key: ((date_trunc('month'::text, ((doc #>> '{session,started_at}'::text[]))::timestamp with time zone))::date)
+        Sort Method: quicksort  Memory: 2029kB
+        Buffers: shared hit=19923
+        ->  Gather  (cost=1000.00..22173.42 rows=1 width=1426) (actual time=9.874..50.499 rows=1398.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=19923
+              ->  Parallel Seq Scan on session_record  (cost=0.00..21173.33 rows=1 width=1426) (actual time=3.433..14.205 rows=466.00 loops=3)
+                    Filter: (((doc #>> '{source,nas,vendor}'::text[]) = 'Huawei'::text) AND ((doc #>> '{billing,tariff,code}'::text[]) = 'ВН'::text) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-01-01 00:00:00+03'::timestamp with time zone))
+                    Rows Removed by Filter: 32876
+                    Buffers: shared hit=19923
+Planning Time: 0.091 ms
+Execution Time: 51.894 ms
+
+-- План «после»: оптимизированная форма, с индексами, второй прогон
+GroupAggregate  (cost=3340.22..3354.38 rows=333 width=44) (actual time=7.858..8.407 rows=10.00 loops=1)
+  Group Key: ((date_trunc('month'::text, ((doc #>> '{session,started_at}'::text[]))::timestamp with time zone))::date)
+  Buffers: shared hit=1774
+  ->  Sort  (cost=3340.22..3341.06 rows=333 width=1426) (actual time=7.797..7.911 rows=1398.00 loops=1)
+        Sort Key: ((date_trunc('month'::text, ((doc #>> '{session,started_at}'::text[]))::timestamp with time zone))::date)
+        Sort Method: quicksort  Memory: 2029kB
+        Buffers: shared hit=1774
+        ->  Bitmap Heap Scan on session_record  (cost=43.67..3326.27 rows=333 width=1426) (actual time=1.745..7.214 rows=1398.00 loops=1)
+              Recheck Cond: (doc @@ '($."source"."nas"."vendor" == "Huawei" && $."billing"."tariff"."code" == "ВН")'::jsonpath)
+              Filter: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-01-01 00:00:00+03'::timestamp with time zone)
+              Rows Removed by Filter: 863
+              Heap Blocks: exact=1754
+              Buffers: shared hit=1774
+              ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..43.59 rows=1000 width=0) (actual time=0.587..0.587 rows=2261.00 loops=1)
+                    Index Cond: (doc @@ '($."source"."nas"."vendor" == "Huawei" && $."billing"."tariff"."code" == "ВН")'::jsonpath)
+                    Index Searches: 1
+                    Buffers: shared hit=20
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.101 ms
+Execution Time: 8.640 ms
+
+-- Сравнение узлов: «после» (с индексами) и «до» (без индексов)
+| Узел «после» | cost | время, мс | Узел «до» | cost | время, мс | Стоимость не выросла |
+|---|---|---|---|---|---|---|
+| GroupAggregate | 3354.38 | 8.407 × 1 | GroupAggregate | 22173.48 | 42.310 × 1 | да |
+| · Sort | 3341.06 | 7.911 × 1 | Sort | 22173.44 | 41.659 × 1 | да |
+| · · Bitmap Heap Scan on session_record | 3326.27 | 7.214 × 1 | Parallel Seq Scan on session_record | 21173.33 | 17.074 × 3 | да |
+| · · · Bitmap Index Scan on ix_session_record_doc | 43.59 | 0.587 × 1 | — | | | входит в узел выше |
+
+Узлы «до», которым нет пары «после» (исчезли из плана): Gather (cost 22173.42)
+
+Итог: стоимость верхнего узла 22 173.48 → 3 354.38; время выполнения 42.448 → 8.640 мс; индексы в плане «после»: ix_session_record_doc

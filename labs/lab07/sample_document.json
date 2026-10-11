@@ -1,0 +1,164 @@
+[
+  {
+    "source": {
+      "provider": {
+        "name": "СпектрНет",
+        "city": "Мариуполь"
+      },
+      "nas": {
+        "name": "bras26-2",
+        "vendor": "MikroTik",
+        "model": "CCR2004-1G-12S+2XS",
+        "ip": "172.16.26.2",
+        "location": {
+          "city": "Донецк",
+          "address": "ул. Садовая, д. 102"
+        }
+      }
+    },
+    "contract": {
+      "number": "Д-2026-009666",
+      "ip": "10.0.40.51"
+    },
+    "session": {
+      "acct_id": "84AB3E77",
+      "user_name": "d2026009666",
+      "started_at": "2026-09-01T00:45:35+03:00",
+      "stopped_at": "2026-09-01T03:33:46+03:00",
+      "duration_s": 10091,
+      "stop_cause": "user_request",
+      "traffic": {
+        "in": {
+          "mb": 729.262,
+          "packets": 541751
+        },
+        "out": {
+          "mb": 56.106,
+          "packets": 246684
+        }
+      }
+    },
+    "billing": {
+      "tariff": {
+        "code": "Н",
+        "name": "Ночной",
+        "window": {
+          "from": "23:00",
+          "to": "09:00"
+        },
+        "weekend": false
+      },
+      "price_per_mb": 0.1449,
+      "discount_pct": 50.00,
+      "cost": 56.90
+    },
+    "attributes": {
+      "class": "AUTH-EBE00EFC543B5653",
+      "rate_limit": "500M/500M",
+      "framed_pool": "pool-bras26-2",
+      "calling_station_id": "C6:07:96:92:0F:EC"
+    },
+    "events": [
+      {
+        "at": "2026-09-01T00:45:35+03:00",
+        "type": "start"
+      },
+      {
+        "at": "2026-09-01T01:45:35+03:00",
+        "type": "interim",
+        "in_mb": 260.167,
+        "out_mb": 20.016
+      },
+      {
+        "at": "2026-09-01T02:45:35+03:00",
+        "type": "interim",
+        "in_mb": 520.334,
+        "out_mb": 40.032
+      },
+      {
+        "at": "2026-09-01T03:33:46+03:00",
+        "type": "stop",
+        "cause": "user_request"
+      }
+    ]
+  },
+  {
+    "source": {
+      "provider": {
+        "name": "СфераКоннект",
+        "city": "Торез"
+      },
+      "nas": {
+        "name": "bras25-1",
+        "vendor": "Cisco",
+        "model": "ASR1001-X",
+        "ip": "172.16.25.1",
+        "location": {
+          "city": "Торез",
+          "address": "ул. Горького, д. 65, оф. 9"
+        }
+      }
+    },
+    "contract": {
+      "number": "Д-2025-006193",
+      "ip": "10.0.46.189"
+    },
+    "session": {
+      "acct_id": "84AB3F8C",
+      "user_name": "d2025006193",
+      "started_at": "2026-09-01T20:26:12+03:00",
+      "stopped_at": "2026-09-01T22:38:35+03:00",
+      "duration_s": 7943,
+      "stop_cause": "nas_reboot",
+      "traffic": {
+        "in": {
+          "mb": 644.783,
+          "packets": 457014
+        },
+        "out": {
+          "mb": 47.127,
+          "packets": 207795
+        }
+      }
+    },
+    "billing": {
+      "tariff": {
+        "code": "А",
+        "name": "Акционный",
+        "window": null,
+        "weekend": null
+      },
+      "price_per_mb": 0.1973,
+      "discount_pct": 25.00,
+      "cost": 102.39
+    },
+    "attributes": {
+      "av_pairs": ["subscriber:sa=internet-500m", "ip:vrf-id=INET", "accounting-list=default"],
+      "nas_port_id": "Gi0/0/1.2393",
+      "calling_station_id": "45:D1:6D:88:7E:05"
+    },
+    "events": [
+      {
+        "at": "2026-09-01T20:26:12+03:00",
+        "type": "start"
+      },
+      {
+        "at": "2026-09-01T21:26:12+03:00",
+        "type": "interim",
+        "in_mb": 292.235,
+        "out_mb": 21.359
+      },
+      {
+        "at": "2026-09-01T22:26:12+03:00",
+        "type": "interim",
+        "in_mb": 584.469,
+        "out_mb": 42.719
+      },
+      {
+        "at": "2026-09-01T22:38:35+03:00",
+        "type": "stop",
+        "cause": "nas_reboot"
+      }
+    ]
+  }
+]

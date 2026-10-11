@@ -1,0 +1,140 @@
+Запрос 5.2_vendor_keys (05_functions.sql)
+Раздел задания: Функции: jsonb_object_keys
+Зачем: Разработчик разборщика выгрузок: какие атрибуты присылает оборудование каждого производителя и в какой доле записей — чтобы знать, какие ключи ждать от нового NAS (набор у производителей разный — причина хранить запись в JSONB)
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+WITH v AS (
+    SELECT doc #>> '{source,nas,vendor}' AS vendor, doc -> 'attributes' AS attrs
+    FROM lab7.session_record)
+SELECT v.vendor, k.key AS attribute, count(*) AS records, round(100.0 * count(*) / t.total, 1) AS pct
+FROM v
+CROSS JOIN LATERAL jsonb_object_keys(v.attrs) AS k(key)
+JOIN (SELECT vendor, count(*) AS total FROM v GROUP BY vendor) t ON t.vendor = v.vendor
+GROUP BY v.vendor, k.key, t.total
+ORDER BY v.vendor, records DESC, attribute;
+
+-- Результат (первые строки)
+  vendor   |       attribute       | records |  pct  
+-----------+-----------------------+---------+-------
+ Accel-PPP | downstream_limit_kbps |   19862 | 100.0
+ Accel-PPP | framed_protocol       |   19862 | 100.0
+ Accel-PPP | nas_port_id           |   19862 | 100.0
+ Accel-PPP | upstream_limit_kbps   |   19862 | 100.0
+ Accel-PPP | calling_station_id    |   18105 |  91.2
+ Accel-PPP | framed_pool           |    9858 |  49.6
+ Accel-PPP | class                 |    8723 |  43.9
+ Accel-PPP | redirect_url          |     304 |   1.5
+ Cisco     | av_pairs              |   19791 | 100.0
+ Cisco     | nas_port_id           |   19791 | 100.0
+ Cisco     | calling_station_id    |   18099 |  91.5
+ Cisco     | class                 |    9660 |  48.8
+ Cisco     | redirect_url          |     286 |   1.4
+ Huawei    | input_peak_rate_kbps  |   20168 | 100.0
+ Huawei    | output_peak_rate_kbps |   20168 | 100.0
+ Huawei    | calling_station_id    |   18429 |  91.4
+ Huawei    | domain_name           |   14005 |  69.4
+ Huawei    | class                 |    8805 |  43.7
+ Huawei    | redirect_url          |     289 |   1.4
+ Juniper   | ingress_policy        |   20527 | 100.0
+ Juniper   | primary_dns           |   20527 | 100.0
+ Juniper   | service_activate      |   20527 | 100.0
+ Juniper   | calling_station_id    |   18820 |  91.7
+ Juniper   | class                 |    9119 |  44.4
+ Juniper   | redirect_url          |     305 |   1.5
+ MikroTik  | framed_pool           |   19677 | 100.0
+ MikroTik  | rate_limit            |   19677 | 100.0
+ MikroTik  | calling_station_id    |   18018 |  91.6
+ MikroTik  | class                 |    9871 |  50.2
+ MikroTik  | address_list          |     325 |   1.7
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Incremental Sort  (cost=47045.21..1667308.28 rows=4000000 width=112) (actual time=351.845..351.849 rows=30.00 loops=1)
+  Sort Key: v.vendor, (count(*)) DESC, k.key
+  Presorted Key: v.vendor
+  Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 26kB  Peak Memory: 26kB
+  Buffers: shared hit=19923
+  CTE v
+    ->  Seq Scan on session_record  (cost=0.00..21423.38 rows=100025 width=64) (actual time=0.019..51.402 rows=100025.00 loops=1)
+          Buffers: shared hit=19923
+  ->  GroupAggregate  (cost=17731.08..1310126.65 rows=4000000 width=112) (actual time=155.931..351.774 rows=30.00 loops=1)
+        Group Key: v.vendor, k.key, t.total
+        Buffers: shared hit=19923
+        ->  Incremental Sort  (cost=17731.08..1120101.65 rows=10002500 width=72) (actual time=154.147..318.208 rows=423322.00 loops=1)
+              Sort Key: v.vendor, k.key, t.total
+              Presorted Key: v.vendor
+              Full-sort Groups: 5  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+              Pre-sorted Groups: 5  Sort Method: quicksort  Average Memory: 9069kB  Peak Memory: 9069kB
+              Buffers: shared hit=19923
+              ->  Nested Loop  (cost=12819.85..214371.22 rows=10002500 width=72) (actual time=96.041..210.655 rows=423322.00 loops=1)
+                    Buffers: shared hit=19923
+                    ->  Merge Join  (cost=12819.85..14321.22 rows=100025 width=72) (actual time=96.021..114.836 rows=100025.00 loops=1)
+                          Merge Cond: (v.vendor = t.vendor)
+                          Buffers: shared hit=19923
+                          ->  Sort  (cost=10307.58..10557.64 rows=100025 width=64) (actual time=83.531..92.975 rows=100025.00 loops=1)
+                                Sort Key: v.vendor
+                                Sort Method: quicksort  Memory: 22311kB
+                                Buffers: shared hit=19923
+                                ->  CTE Scan on v  (cost=0.00..2000.50 rows=100025 width=64) (actual time=0.020..64.840 rows=100025.00 loops=1)
+                                      Storage: Memory  Maximum Storage: 21045kB
+                                      Buffers: shared hit=19923
+                          ->  Sort  (cost=2512.27..2512.77 rows=200 width=40) (actual time=12.483..12.487 rows=5.00 loops=1)
+                                Sort Key: t.vendor
+                                Sort Method: quicksort  Memory: 25kB
+                                ->  Subquery Scan on t  (cost=2500.62..2504.62 rows=200 width=40) (actual time=12.446..12.449 rows=5.00 loops=1)
+                                      ->  HashAggregate  (cost=2500.62..2502.62 rows=200 width=40) (actual time=12.445..12.446 rows=5.00 loops=1)
+                                            Group Key: v_1.vendor
+                                            Batches: 1  Memory Usage: 32kB
+                                            ->  CTE Scan on v v_1  (cost=0.00..2000.50 rows=100025 width=32) (actual time=0.002..4.236 rows=100025.00 loops=1)
+                                                  Storage: Memory  Maximum Storage: 21045kB
+                    ->  Function Scan on jsonb_object_keys k  (cost=0.00..1.00 rows=100 width=32) (actual time=0.001..0.001 rows=4.23 loops=100025)
+Planning Time: 0.173 ms
+Execution Time: 353.484 ms
+
+-- План «после»: с индексами, второй прогон
+Incremental Sort  (cost=47045.21..1667308.28 rows=4000000 width=112) (actual time=349.836..349.841 rows=30.00 loops=1)
+  Sort Key: v.vendor, (count(*)) DESC, k.key
+  Presorted Key: v.vendor
+  Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 26kB  Peak Memory: 26kB
+  Buffers: shared hit=19923
+  CTE v
+    ->  Seq Scan on session_record  (cost=0.00..21423.38 rows=100025 width=64) (actual time=0.070..46.840 rows=100025.00 loops=1)
+          Buffers: shared hit=19923
+  ->  GroupAggregate  (cost=17731.08..1310126.65 rows=4000000 width=112) (actual time=153.019..349.764 rows=30.00 loops=1)
+        Group Key: v.vendor, k.key, t.total
+        Buffers: shared hit=19923
+        ->  Incremental Sort  (cost=17731.08..1120101.65 rows=10002500 width=72) (actual time=151.040..316.757 rows=423322.00 loops=1)
+              Sort Key: v.vendor, k.key, t.total
+              Presorted Key: v.vendor
+              Full-sort Groups: 5  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+              Pre-sorted Groups: 5  Sort Method: quicksort  Average Memory: 9069kB  Peak Memory: 9069kB
+              Buffers: shared hit=19923
+              ->  Nested Loop  (cost=12819.85..214371.22 rows=10002500 width=72) (actual time=92.053..209.059 rows=423322.00 loops=1)
+                    Buffers: shared hit=19923
+                    ->  Merge Join  (cost=12819.85..14321.22 rows=100025 width=72) (actual time=92.032..111.934 rows=100025.00 loops=1)
+                          Merge Cond: (v.vendor = t.vendor)
+                          Buffers: shared hit=19923
+                          ->  Sort  (cost=10307.58..10557.64 rows=100025 width=64) (actual time=79.066..89.386 rows=100025.00 loops=1)
+                                Sort Key: v.vendor
+                                Sort Method: quicksort  Memory: 22311kB
+                                Buffers: shared hit=19923
+                                ->  CTE Scan on v  (cost=0.00..2000.50 rows=100025 width=64) (actual time=0.075..60.025 rows=100025.00 loops=1)
+                                      Storage: Memory  Maximum Storage: 21045kB
+                                      Buffers: shared hit=19923
+                          ->  Sort  (cost=2512.27..2512.77 rows=200 width=40) (actual time=12.959..12.964 rows=5.00 loops=1)
+                                Sort Key: t.vendor
+                                Sort Method: quicksort  Memory: 25kB
+                                ->  Subquery Scan on t  (cost=2500.62..2504.62 rows=200 width=40) (actual time=12.929..12.931 rows=5.00 loops=1)
+                                      ->  HashAggregate  (cost=2500.62..2502.62 rows=200 width=40) (actual time=12.928..12.929 rows=5.00 loops=1)
+                                            Group Key: v_1.vendor
+                                            Batches: 1  Memory Usage: 32kB
+                                            ->  CTE Scan on v v_1  (cost=0.00..2000.50 rows=100025 width=32) (actual time=0.002..4.003 rows=100025.00 loops=1)
+                                                  Storage: Memory  Maximum Storage: 21045kB
+                    ->  Function Scan on jsonb_object_keys k  (cost=0.00..1.00 rows=100 width=32) (actual time=0.001..0.001 rows=4.23 loops=100025)
+Planning Time: 0.512 ms
+Execution Time: 352.433 ms
+
+Итог: стоимость верхнего узла 1 667 308.28 → 1 667 308.28; время выполнения 353.484 → 352.433 мс; индексы в плане «после»: не используются (нужны все записи таблицы — индекс не нужен)

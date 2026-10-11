@@ -1,0 +1,47 @@
+-- Вывод labs/lab07/sql/07_delete.sql (psql -f, ON_ERROR_STOP)
+
+7.1 Служебные сеансы наладки узлов доступа: в учёт не идут — договора нет, тариф «Служебный»
+SELECT doc #>> '{source,nas,name}' AS nas, doc #>> '{session,user_name}' AS user_name,
+       doc #>> '{session,started_at}' AS started_at, doc -> 'contract' AS contract, doc #> '{billing,tariff,code}' AS tariff
+FROM lab7.session_record WHERE doc @> '{"contract": null}' ORDER BY id LIMIT 3;
+   nas    |   user_name   |        started_at         | contract | tariff 
+----------+---------------+---------------------------+----------+--------
+ bras08-3 | test-bras08-3 | 2024-01-10T20:56:52+03:00 | null     | "С"
+ bras04-2 | test-bras04-2 | 2024-01-25T16:43:09+03:00 | null     | "С"
+ bras19-2 | test-bras19-2 | 2024-01-30T08:42:43+03:00 | null     | "С"
+
+SELECT count(*) AS to_delete FROM lab7.session_record WHERE doc @> '{"contract": null}';
+ to_delete 
+-----------
+       400
+
+DELETE FROM lab7.session_record
+WHERE doc @> '{"contract": null}';
+удалено записей: 400
+7.2 Неудачные подключения: NAS завершил сеанс ошибкой, трафика нет — в core.session такая запись не превращается (объём > 0)
+SELECT doc #>> '{contract,number}' AS contract, doc #>> '{session,stop_cause}' AS stop_cause,
+       doc #>> '{session,duration_s}' AS duration_s, doc #> '{session,traffic}' AS traffic
+FROM lab7.session_record
+WHERE doc @? '$.session.traffic ? (@.in.mb == 0 && @.out.mb == 0)' ORDER BY id LIMIT 3;
+   contract    |     stop_cause      | duration_s |                                 traffic                                 
+---------------+---------------------+------------+-------------------------------------------------------------------------
+ Д-2024-000027 | nas_error           | 2          | {"in": {"mb": 0.000, "packets": 0}, "out": {"mb": 0.000, "packets": 0}}
+ Д-2024-000391 | service_unavailable | 2          | {"in": {"mb": 0.000, "packets": 0}, "out": {"mb": 0.000, "packets": 0}}
+ Д-2024-000509 | nas_error           | 2          | {"in": {"mb": 0.000, "packets": 0}, "out": {"mb": 0.000, "packets": 0}}
+
+SELECT count(*) AS to_delete FROM lab7.session_record
+WHERE doc @? '$.session.traffic ? (@.in.mb == 0 && @.out.mb == 0)';
+ to_delete 
+-----------
+      1200
+
+DELETE FROM lab7.session_record
+WHERE doc @? '$.session.traffic ? (@.in.mb == 0 && @.out.mb == 0)';
+удалено записей: 1200
+SELECT count(*) AS documents_left,
+       count(*) FILTER (WHERE doc @> '{"contract": null}') AS service_test,
+       count(*) FILTER (WHERE doc @? '$.session.traffic ? (@.in.mb == 0 && @.out.mb == 0)') AS failed
+FROM lab7.session_record;
+ documents_left | service_test | failed 
+----------------+--------------+--------
+         100025 |            0 |      0

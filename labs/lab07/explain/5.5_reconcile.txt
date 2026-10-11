@@ -1,0 +1,151 @@
+Запрос 5.5_reconcile (05_functions.sql)
+Раздел задания: Функции: jsonb_populate_record (все записи), сверка с core.session
+Зачем: Сверка выгрузки с учётом курсовой: каждая учётная запись с трафиком, разобранная в строку core.session, совпадает с сеансом курсовой (договор, начало, тариф, объём, стоимость); служебные (без договора) и неудачные (без трафика) в сеансы не превращаются
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+-- Объём 0 записывается как null: домен ref.d_mb требует объём > 0, null он пропускает, и строка остаётся неразобранной.
+SELECT count(*)                                                          AS records,
+       count(*) FILTER (WHERE r.doc -> 'contract' = 'null')              AS service_test,
+       count(*) FILTER (WHERE s.contract_id IS NOT NULL AND s.volume_mb IS NULL) AS no_traffic,
+       count(*) FILTER (WHERE s.contract_id IS NOT NULL AND s.volume_mb IS NOT NULL) AS parsed,
+       count(cs.id)                                                      AS matched,
+       count(*) FILTER (WHERE s.contract_id IS NOT NULL AND s.volume_mb IS NOT NULL) - count(cs.id) AS mismatched
+FROM lab7.session_record r
+LEFT JOIN core.provider p ON p.name = r.doc #>> '{source,provider,name}'
+LEFT JOIN core.contract c ON c.provider_id = p.id AND c.contract_no = r.doc #>> '{contract,number}'
+LEFT JOIN ref.tariff t ON t.code = r.doc #>> '{billing,tariff,code}'
+CROSS JOIN LATERAL jsonb_populate_record(NULL::core.session,
+        (r.doc -> 'session') || (r.doc -> 'billing')
+        || jsonb_build_object('contract_id', c.id, 'tariff_id', t.id,
+                              'volume_mb', nullif((r.doc #>> '{session,traffic,in,mb}')::numeric
+                                                + (r.doc #>> '{session,traffic,out,mb}')::numeric, 0))) AS s
+LEFT JOIN core.session cs ON cs.contract_id = s.contract_id
+                         AND date_trunc('second', cs.started_at) = s.started_at
+                         AND cs.tariff_id = s.tariff_id AND cs.volume_mb = s.volume_mb AND cs.cost = s.cost;
+
+-- Результат (первые строки)
+ records | service_test | no_traffic | parsed | matched | mismatched 
+---------+--------------+------------+--------+---------+------------
+  100025 |            0 |          0 | 100025 |  100025 |          0
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Finalize Aggregate  (cost=24975.22..24975.23 rows=1 width=48) (actual time=716.782..725.223 rows=1.00 loops=1)
+  Buffers: shared hit=1236651
+  ->  Gather  (cost=24974.98..24975.19 rows=2 width=40) (actual time=715.069..725.201 rows=3.00 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=1236651
+        ->  Partial Aggregate  (cost=23974.98..23974.99 rows=1 width=40) (actual time=668.519..668.532 rows=1.00 loops=3)
+              Buffers: shared hit=1236651
+              ->  Nested Loop Left Join  (cost=507.44..23245.63 rows=41677 width=1466) (actual time=6.255..659.458 rows=33341.67 loops=3)
+                    Buffers: shared hit=1236651
+                    ->  Nested Loop  (cost=507.01..22138.65 rows=41677 width=1500) (actual time=6.205..419.387 rows=33341.67 loops=3)
+                          Buffers: shared hit=20601
+                          ->  Hash Left Join  (cost=506.97..21305.08 rows=41677 width=1428) (actual time=6.007..92.593 rows=33341.67 loops=3)
+                                Hash Cond: ((r.doc #>> '{billing,tariff,code}'::text[]) = (t.code)::text)
+                                Buffers: shared hit=20541
+                                ->  Hash Left Join  (cost=505.75..21186.69 rows=41677 width=1426) (actual time=5.222..77.336 rows=33341.67 loops=3)
+                                      Hash Cond: ((p.id = c.provider_id) AND ((r.doc #>> '{contract,number}'::text[]) = (c.contract_no)::text))
+                                      Buffers: shared hit=20538
+                                      ->  Hash Left Join  (cost=1.70..20458.63 rows=41677 width=1426) (actual time=0.714..46.321 rows=33341.67 loops=3)
+                                            Hash Cond: ((r.doc #>> '{source,provider,name}'::text[]) = (p.name)::text)
+                                            Buffers: shared hit=19926
+                                            ->  Parallel Seq Scan on session_record r  (cost=0.00..20339.77 rows=41677 width=1422) (actual time=0.018..20.106 rows=33341.67 loops=3)
+                                                  Buffers: shared hit=19923
+                                            ->  Hash  (cost=1.31..1.31 rows=31 width=24) (actual time=0.680..0.681 rows=31.00 loops=3)
+                                                  Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                                  Buffers: shared hit=3
+                                                  ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=24) (actual time=0.658..0.661 rows=31.00 loops=3)
+                                                        Buffers: shared hit=3
+                                      ->  Hash  (cost=324.02..324.02 rows=12002 width=23) (actual time=4.435..4.436 rows=12002.00 loops=3)
+                                            Buckets: 16384  Batches: 1  Memory Usage: 773kB
+                                            Buffers: shared hit=612
+                                            ->  Seq Scan on contract c  (cost=0.00..324.02 rows=12002 width=23) (actual time=0.516..2.519 rows=12002.00 loops=3)
+                                                  Buffers: shared hit=612
+                                ->  Hash  (cost=1.10..1.10 rows=10 width=5) (actual time=0.768..0.770 rows=10.00 loops=3)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                      Buffers: shared hit=3
+                                      ->  Seq Scan on tariff t  (cost=0.00..1.10 rows=10 width=5) (actual time=0.756..0.758 rows=10.00 loops=3)
+                                            Buffers: shared hit=3
+                          ->  Function Scan on jsonb_populate_record s  (cost=0.03..0.04 rows=1 width=78) (actual time=0.009..0.009 rows=1.00 loops=100025)
+                                Buffers: shared hit=60
+                    ->  Memoize  (cost=0.43..32.54 rows=1 width=34) (actual time=0.005..0.007 rows=1.00 loops=100025)
+                          Cache Key: s.contract_id, s.started_at, s.tariff_id, s.volume_mb, s.cost
+                          Cache Mode: logical
+                          Hits: 0  Misses: 35004  Evictions: 0  Overflows: 0  Memory Usage: 5716kB
+                          Buffers: shared hit=1216050
+                          Worker 0:  Hits: 0  Misses: 32342  Evictions: 0  Overflows: 0  Memory Usage: 5282kB
+                          Worker 1:  Hits: 0  Misses: 32679  Evictions: 0  Overflows: 0  Memory Usage: 5337kB
+                          ->  Index Scan using ix_session_contract_id_started_at on session cs  (cost=0.42..32.53 rows=1 width=34) (actual time=0.004..0.006 rows=1.00 loops=100025)
+                                Index Cond: (contract_id = s.contract_id)
+                                Filter: ((tariff_id = s.tariff_id) AND ((volume_mb)::numeric = (s.volume_mb)::numeric) AND ((cost)::numeric = (s.cost)::numeric) AND (date_trunc('second'::text, started_at) = s.started_at))
+                                Rows Removed by Filter: 8
+                                Index Searches: 100025
+                                Buffers: shared hit=1216050
+Planning Time: 1.031 ms
+Execution Time: 725.816 ms
+
+-- План «после»: с индексами, второй прогон
+Finalize Aggregate  (cost=24989.13..24989.14 rows=1 width=48) (actual time=640.264..648.012 rows=1.00 loops=1)
+  Buffers: shared hit=1236651
+  ->  Gather  (cost=24988.90..24989.11 rows=2 width=40) (actual time=639.307..647.998 rows=3.00 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=1236651
+        ->  Partial Aggregate  (cost=23988.90..23988.91 rows=1 width=40) (actual time=612.626..612.633 rows=1.00 loops=3)
+              Buffers: shared hit=1236651
+              ->  Nested Loop Left Join  (cost=507.44..23259.55 rows=41677 width=1466) (actual time=3.444..603.913 rows=33341.67 loops=3)
+                    Buffers: shared hit=1236651
+                    ->  Nested Loop  (cost=507.01..22152.57 rows=41677 width=1500) (actual time=3.410..396.635 rows=33341.67 loops=3)
+                          Buffers: shared hit=20601
+                          ->  Hash Left Join  (cost=506.97..21318.99 rows=41677 width=1428) (actual time=3.256..80.589 rows=33341.67 loops=3)
+                                Hash Cond: ((r.doc #>> '{billing,tariff,code}'::text[]) = (t.code)::text)
+                                Buffers: shared hit=20541
+                                ->  Hash Left Join  (cost=505.75..21200.61 rows=41677 width=1426) (actual time=2.716..65.962 rows=33341.67 loops=3)
+                                      Hash Cond: ((p.id = c.provider_id) AND ((r.doc #>> '{contract,number}'::text[]) = (c.contract_no)::text))
+                                      Buffers: shared hit=20538
+                                      ->  Hash Left Join  (cost=1.70..20472.54 rows=41677 width=1426) (actual time=0.311..40.325 rows=33341.67 loops=3)
+                                            Hash Cond: ((r.doc #>> '{source,provider,name}'::text[]) = (p.name)::text)
+                                            Buffers: shared hit=19926
+                                            ->  Parallel Seq Scan on session_record r  (cost=0.00..20339.77 rows=41677 width=1422) (actual time=0.012..17.419 rows=33341.67 loops=3)
+                                                  Buffers: shared hit=19923
+                                            ->  Hash  (cost=1.31..1.31 rows=31 width=24) (actual time=0.287..0.289 rows=31.00 loops=3)
+                                                  Buckets: 1024  Batches: 1  Memory Usage: 10kB
+                                                  Buffers: shared hit=3
+                                                  ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=24) (actual time=0.276..0.278 rows=31.00 loops=3)
+                                                        Buffers: shared hit=3
+                                      ->  Hash  (cost=324.02..324.02 rows=12002 width=23) (actual time=2.363..2.364 rows=12002.00 loops=3)
+                                            Buckets: 16384  Batches: 1  Memory Usage: 773kB
+                                            Buffers: shared hit=612
+                                            ->  Seq Scan on contract c  (cost=0.00..324.02 rows=12002 width=23) (actual time=0.252..1.279 rows=12002.00 loops=3)
+                                                  Buffers: shared hit=612
+                                ->  Hash  (cost=1.10..1.10 rows=10 width=5) (actual time=0.531..0.531 rows=10.00 loops=3)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                      Buffers: shared hit=3
+                                      ->  Seq Scan on tariff t  (cost=0.00..1.10 rows=10 width=5) (actual time=0.522..0.523 rows=10.00 loops=3)
+                                            Buffers: shared hit=3
+                          ->  Function Scan on jsonb_populate_record s  (cost=0.03..0.04 rows=1 width=78) (actual time=0.009..0.009 rows=1.00 loops=100025)
+                                Buffers: shared hit=60
+                    ->  Memoize  (cost=0.43..32.54 rows=1 width=34) (actual time=0.004..0.006 rows=1.00 loops=100025)
+                          Cache Key: s.contract_id, s.started_at, s.tariff_id, s.volume_mb, s.cost
+                          Cache Mode: logical
+                          Hits: 0  Misses: 31366  Evictions: 0  Overflows: 0  Memory Usage: 5122kB
+                          Buffers: shared hit=1216050
+                          Worker 0:  Hits: 0  Misses: 33867  Evictions: 0  Overflows: 0  Memory Usage: 5531kB
+                          Worker 1:  Hits: 0  Misses: 34792  Evictions: 0  Overflows: 0  Memory Usage: 5681kB
+                          ->  Index Scan using ix_session_contract_id_started_at on session cs  (cost=0.42..32.53 rows=1 width=34) (actual time=0.004..0.005 rows=1.00 loops=100025)
+                                Index Cond: (contract_id = s.contract_id)
+                                Filter: ((tariff_id = s.tariff_id) AND ((volume_mb)::numeric = (s.volume_mb)::numeric) AND ((cost)::numeric = (s.cost)::numeric) AND (date_trunc('second'::text, started_at) = s.started_at))
+                                Rows Removed by Filter: 8
+                                Index Searches: 100025
+                                Buffers: shared hit=1216050
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.488 ms
+Execution Time: 648.613 ms
+
+Итог: стоимость верхнего узла 24 975.23 → 24 989.14; время выполнения 725.816 → 648.613 мс; индексы в плане «после»: ix_session_contract_id_started_at (сверяются все записи — таблица читается целиком; индекс core.session — для соединения с сеансами курсовой)

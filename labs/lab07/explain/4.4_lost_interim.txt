@@ -1,0 +1,65 @@
+Запрос 4.4_lost_interim (04_jsonpath.sql)
+Раздел задания: jsonpath: @? с фильтром от корня, jsonb_path_query_array, jsonb_path_query_first
+Зачем: Инженер ищет узлы, теряющие пакеты учёта: сеансы дольше часа без промежуточных обновлений — последовательность событий (массив) и время события stop
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT doc #>> '{source,nas,name}'                                        AS nas,
+       doc #>> '{source,nas,vendor}'                                      AS vendor,
+       (doc #>> '{session,duration_s}')::int / 60                         AS minutes,
+       jsonb_path_query_array(doc, '$.events[*].type')                    AS event_types,
+       jsonb_path_query_first(doc, '$.events[*] ? (@.type == "stop").at') #>> '{}' AS stop_at
+FROM lab7.session_record
+WHERE doc @? '$ ? (@.session.duration_s > 3600)'
+  AND NOT doc @? '$.events[*] ? (@.type == "interim")'
+ORDER BY (doc #>> '{session,started_at}')::timestamptz DESC
+LIMIT 10;
+
+-- Результат (первые строки)
+   nas    |  vendor   | minutes |    event_types    |          stop_at          
+----------+-----------+---------+-------------------+---------------------------
+ bras19-1 | Huawei    |      85 | ["start", "stop"] | 2026-10-07T01:11:43+03:00
+ bras10-1 | Cisco     |      91 | ["start", "stop"] | 2026-10-06T16:34:30+03:00
+ bras15-1 | Cisco     |      99 | ["start", "stop"] | 2026-10-06T16:33:43+03:00
+ bras15-1 | Cisco     |     550 | ["start", "stop"] | 2026-10-06T19:15:24+03:00
+ bras23-2 | Cisco     |     172 | ["start", "stop"] | 2026-10-05T18:48:26+03:00
+ bras23-1 | MikroTik  |     222 | ["start", "stop"] | 2026-10-05T19:27:33+03:00
+ bras10-1 | Cisco     |     289 | ["start", "stop"] | 2026-10-05T17:01:30+03:00
+ bras12-1 | Juniper   |     294 | ["start", "stop"] | 2026-10-05T09:20:14+03:00
+ bras06-1 | Accel-PPP |     107 | ["start", "stop"] | 2026-10-05T03:44:38+03:00
+ bras29-2 | Accel-PPP |     340 | ["start", "stop"] | 2026-10-04T21:04:11+03:00
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=21474.47..21474.49 rows=10 width=140) (actual time=62.223..62.224 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21474.47..21476.94 rows=990 width=140) (actual time=62.222..62.222 rows=10.00 loops=1)
+        Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=19923
+        ->  Seq Scan on session_record  (cost=0.00..21453.08 rows=990 width=140) (actual time=0.074..61.929 rows=1211.00 loops=1)
+              Filter: ((doc @? '$?(@."session"."duration_s" > 3600)'::jsonpath) AND (NOT (doc @? '$."events"[*]?(@."type" == "interim")'::jsonpath)))
+              Rows Removed by Filter: 98814
+              Buffers: shared hit=19923
+Planning Time: 0.074 ms
+Execution Time: 62.242 ms
+
+-- План «после»: с индексами, второй прогон
+Limit  (cost=21474.47..21474.49 rows=10 width=140) (actual time=52.034..52.036 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21474.47..21476.94 rows=990 width=140) (actual time=52.032..52.033 rows=10.00 loops=1)
+        Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=19923
+        ->  Seq Scan on session_record  (cost=0.00..21453.08 rows=990 width=140) (actual time=0.058..51.789 rows=1211.00 loops=1)
+              Filter: ((doc @? '$?(@."session"."duration_s" > 3600)'::jsonpath) AND (NOT (doc @? '$."events"[*]?(@."type" == "interim")'::jsonpath)))
+              Rows Removed by Filter: 98814
+              Buffers: shared hit=19923
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.086 ms
+Execution Time: 52.059 ms
+
+Итог: стоимость верхнего узла 21 474.49 → 21 474.49; время выполнения 62.242 → 52.059 мс; индексы в плане «после»: не используются (условие-диапазон (> 3600) и отрицание (NOT @?) индекс GIN не ищет — читаются все записи)

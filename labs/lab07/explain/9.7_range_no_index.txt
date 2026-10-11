@@ -1,0 +1,84 @@
+Запрос 9.7_range_no_index (09_optimize.sql)
+Раздел задания: индекс не применим: сравнение «больше» внутри jsonpath
+Зачем: Служба безопасности ищет заражённые компьютеры абонентов (рассылка спама): сеансы с исходящим трафиком больше 400 Мб — GIN хранит пары «путь = значение» и диапазон по ним не ищет
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT doc #>> '{source,provider,name}' AS provider, count(*) AS sessions
+FROM lab7.session_record
+WHERE doc @? '$.session.traffic.out ? (@.mb > 400)'
+GROUP BY 1
+ORDER BY 2 DESC, 1
+LIMIT 10;
+
+-- Результат (первые строки)
+   provider    | sessions 
+---------------+----------
+ СпектрЛинк    |       40
+ МегаСеть      |       38
+ АльфаЛинк     |       36
+ ДонЛинк       |       36
+ Сфера-Телеком |       36
+ ВегаСеть      |       34
+ СфераЛинк     |       34
+ Альфа-Телеком |       33
+ Дон-Телеком   |       33
+ ДонСеть       |       33
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=21267.25..21267.28 rows=10 width=40) (actual time=48.648..48.650 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21267.25..21269.75 rows=1000 width=40) (actual time=48.646..48.647 rows=10.00 loops=1)
+        Sort Key: (count(*)) DESC, ((doc #>> '{source,provider,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=19923
+        ->  GroupAggregate  (cost=21225.64..21245.64 rows=1000 width=40) (actual time=48.532..48.624 rows=30.00 loops=1)
+              Group Key: ((doc #>> '{source,provider,name}'::text[]))
+              Buffers: shared hit=19923
+              ->  Sort  (cost=21225.64..21228.14 rows=1000 width=32) (actual time=48.519..48.541 rows=908.00 loops=1)
+                    Sort Key: ((doc #>> '{source,provider,name}'::text[]))
+                    Sort Method: quicksort  Memory: 25kB
+                    Buffers: shared hit=19923
+                    ->  Seq Scan on session_record  (cost=0.00..21175.81 rows=1000 width=32) (actual time=0.293..47.926 rows=908.00 loops=1)
+                          Filter: (doc @? '$."session"."traffic"."out"?(@."mb" > 400)'::jsonpath)
+                          Rows Removed by Filter: 99117
+                          Buffers: shared hit=19923
+Planning Time: 0.155 ms
+Execution Time: 48.685 ms
+
+-- План «после»: с индексами, второй прогон
+Limit  (cost=21234.16..21234.19 rows=10 width=40) (actual time=58.234..58.236 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21234.16..21234.24 rows=30 width=40) (actual time=58.233..58.234 rows=10.00 loops=1)
+        Sort Key: (count(*)) DESC, ((doc #>> '{source,provider,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=19923
+        ->  GroupAggregate  (cost=21225.64..21233.52 rows=30 width=40) (actual time=58.162..58.222 rows=30.00 loops=1)
+              Group Key: ((doc #>> '{source,provider,name}'::text[]))
+              Buffers: shared hit=19923
+              ->  Sort  (cost=21225.64..21228.14 rows=1000 width=32) (actual time=58.153..58.172 rows=908.00 loops=1)
+                    Sort Key: ((doc #>> '{source,provider,name}'::text[]))
+                    Sort Method: quicksort  Memory: 25kB
+                    Buffers: shared hit=19923
+                    ->  Seq Scan on session_record  (cost=0.00..21175.81 rows=1000 width=32) (actual time=0.132..57.621 rows=908.00 loops=1)
+                          Filter: (doc @? '$."session"."traffic"."out"?(@."mb" > 400)'::jsonpath)
+                          Rows Removed by Filter: 99117
+                          Buffers: shared hit=19923
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.103 ms
+Execution Time: 58.256 ms
+
+-- Сравнение узлов: «после» (с индексами) и «до» (без индексов)
+| Узел «после» | cost | время, мс | Узел «до» | cost | время, мс | Стоимость не выросла |
+|---|---|---|---|---|---|---|
+| Limit | 21234.19 | 58.236 × 1 | Limit | 21267.28 | 48.650 × 1 | да |
+| · Sort | 21234.24 | 58.234 × 1 | Sort | 21269.75 | 48.647 × 1 | да |
+| · · GroupAggregate | 21233.52 | 58.222 × 1 | GroupAggregate | 21245.64 | 48.624 × 1 | да |
+| · · · Sort | 21228.14 | 58.172 × 1 | Sort | 21228.14 | 48.541 × 1 | да |
+| · · · · Seq Scan on session_record | 21175.81 | 57.621 × 1 | Seq Scan on session_record | 21175.81 | 47.926 × 1 | да |
+
+Итог: стоимость верхнего узла 21 267.28 → 21 234.19; время выполнения 48.685 → 58.256 мс; индексы в плане «после»: не используются — пример, где индекс не даёт выигрыша (причина — в «Зачем» и в README)

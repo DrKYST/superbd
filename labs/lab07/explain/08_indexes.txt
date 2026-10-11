@@ -1,0 +1,14 @@
+-- Вывод labs/lab07/sql/08_indexes.sql (psql -f, ON_ERROR_STOP)
+
+           index_name            | method |  size   | table_size 
+---------------------------------+--------+---------+------------
+ ix_session_record_doc           | gin    | 75 MB   | 156 MB
+ ix_session_record_attributes    | gin    | 8048 kB | 156 MB
+ uq_session_record_provider_acct | btree  | 4984 kB | 156 MB
+ ix_session_record_started_at    | btree  | 4872 kB | 156 MB
+ pk_session_record               | btree  | 2208 kB | 156 MB
+
+    opclass     | size  
+----------------+-------
+ jsonb_path_ops | 75 MB
+ jsonb_ops      | 85 MB

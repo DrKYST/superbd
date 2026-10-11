@@ -1,0 +1,187 @@
+-- Вывод labs/lab07/sql/06_update.sql (psql -f, ON_ERROR_STOP)
+
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+6.1 jsonb_set: провайдер прислал исправление — адрес узла bras01-2 был указан с ошибкой (д. 57 вместо д. 75)
+SELECT min(id) AS u_id FROM lab7.session_record WHERE doc @> '{"source": {"nas": {"name": "bras01-2"}}}' 
+SELECT id, doc #> '{source,nas,location}' AS before FROM lab7.session_record WHERE id = 50;
+ id |                         before                         
+----+--------------------------------------------------------
+ 50 | {"city": "Снежное", "address": "бул. Шевченко, д. 57"}
+
+UPDATE lab7.session_record
+SET doc = jsonb_set(doc, '{source,nas,location,address}', '"бул. Шевченко, д. 75"')
+WHERE doc @> '{"source": {"nas": {"name": "bras01-2"}}}';
+изменено записей: 1783
+SELECT id, doc #> '{source,nas,location}' AS after FROM lab7.session_record WHERE id = 50;
+ id |                         after                          
+----+--------------------------------------------------------
+ 50 | {"city": "Снежное", "address": "бул. Шевченко, д. 75"}
+
+6.2 jsonb_set (create_missing): выставлены счета ДонНет за сентябрь 2026 — в записи сентября добавляется номер счёта
+SELECT min(id) AS u_id FROM lab7.session_record
+WHERE doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', 'ДонНет')))
+  AND doc -> 'contract' <> 'null'
+  AND (doc #>> '{session,started_at}')::timestamptz >= '2026-09-01'
+  AND (doc #>> '{session,started_at}')::timestamptz <  '2026-10-01' 
+SELECT id, doc -> 'billing' AS before FROM lab7.session_record WHERE id = 86873;
+  id   |                                                                                 before                                                                                 
+-------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 86873 | {"cost": 1.32, "tariff": {"code": "Н", "name": "Ночной", "window": {"to": "09:00", "from": "23:00"}, "weekend": false}, "discount_pct": 50.00, "price_per_mb": 0.0860}
+
+UPDATE lab7.session_record
+SET doc = jsonb_set(doc, '{billing,invoice}',                      -- ключа invoice ещё нет — он создаётся
+                    to_jsonb('СЧ-2026-09/' || (doc #>> '{contract,number}')), true)
+WHERE doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', 'ДонНет')))
+  AND doc -> 'contract' <> 'null'
+  AND (doc #>> '{session,started_at}')::timestamptz >= '2026-09-01'
+  AND (doc #>> '{session,started_at}')::timestamptz <  '2026-10-01';
+изменено записей: 399
+SELECT id, doc -> 'billing' AS after FROM lab7.session_record WHERE id = 86873;
+  id   |                                                                                                     after                                                                                                     
+-------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 86873 | {"cost": 1.32, "tariff": {"code": "Н", "name": "Ночной", "window": {"to": "09:00", "from": "23:00"}, "weekend": false}, "invoice": "СЧ-2026-09/Д-2025-007092", "discount_pct": 50.00, "price_per_mb": 0.0860}
+
+6.3 jsonb_set_lax: счёт договора с наибольшим числом сеансов в сентябре аннулирован (ошибка в тарифе) — номер счёта удаляется
+SELECT doc #>> '{billing,invoice}' AS u_invoice
+FROM lab7.session_record
+WHERE doc @? '$.billing.invoice'
+GROUP BY 1 ORDER BY count(*) DESC, 1 LIMIT 1 
+SELECT min(id) AS u_id FROM lab7.session_record WHERE doc @> jsonb_build_object('billing', jsonb_build_object('invoice', 'СЧ-2026-09/Д-2026-011582')) 
+SELECT id, doc -> 'billing' AS before FROM lab7.session_record WHERE id = 88935;
+  id   |                                                                                                     before                                                                                                     
+-------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 88935 | {"cost": 60.26, "tariff": {"code": "Н", "name": "Ночной", "window": {"to": "09:00", "from": "23:00"}, "weekend": false}, "invoice": "СЧ-2026-09/Д-2026-011582", "discount_pct": 50.00, "price_per_mb": 0.1071}
+
+UPDATE lab7.session_record
+SET doc = jsonb_set_lax(doc, '{billing,invoice}', NULL, true, 'delete_key')  -- 'use_json_null' записал бы null
+WHERE doc @> jsonb_build_object('billing', jsonb_build_object('invoice', 'СЧ-2026-09/Д-2026-011582'));
+изменено записей: 12
+SELECT id, doc -> 'billing' AS after FROM lab7.session_record WHERE id = 88935;
+  id   |                                                                                  after                                                                                  
+-------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 88935 | {"cost": 60.26, "tariff": {"code": "Н", "name": "Ночной", "window": {"to": "09:00", "from": "23:00"}, "weekend": false}, "discount_pct": 50.00, "price_per_mb": 0.1071}
+
+6.4 jsonb_insert (insert_after = false): в последнем сеансе договора из жалобы абонент включил ускорение — NAS принял команду смены скорости (CoA); событие вставляется перед завершающим stop
+SELECT id AS u_id FROM lab7.session_record
+WHERE doc #>> '{source,provider,name}' = 'ДонНет' AND doc #>> '{session,acct_id}' = '84AB7736' 
+SELECT id, doc -> 'events' AS before FROM lab7.session_record WHERE id = 101594;
+   id   |                                                                                                                                                                                                          before                                                                                                                                                                                                          
+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 101594 | [{"at": "2026-10-07T11:10:35+03:00", "type": "start"}, {"at": "2026-10-07T12:10:35+03:00", "type": "interim", "in_mb": 162.969, "out_mb": 31.246}, {"at": "2026-10-07T13:10:35+03:00", "type": "interim", "in_mb": 325.938, "out_mb": 62.492}, {"at": "2026-10-07T14:10:35+03:00", "type": "interim", "in_mb": 488.907, "out_mb": 93.738}, {"at": "2026-10-07T14:35:43+03:00", "type": "stop", "cause": "lost_carrier"}]
+
+UPDATE lab7.session_record
+SET doc = jsonb_insert(doc, '{events,-1}',                        -- -1 — последний элемент (stop)
+                       jsonb_build_object(
+                           'at', to_char((doc #>> '{session,stopped_at}')::timestamptz - interval '1 minute',
+                                         'YYYY-MM-DD"T"HH24:MI:SSTZH:TZM'),
+                           'type', 'coa', 'rate_mbps', 500),
+                       false)
+WHERE doc #>> '{source,provider,name}' = 'ДонНет' AND doc #>> '{session,acct_id}' = '84AB7736'
+  AND NOT doc @? '$.events[*] ? (@.type == "coa")';
+SELECT id, doc -> 'events' AS after FROM lab7.session_record WHERE id = 101594;
+   id   |                                                                                                                                                                                                                                             after                                                                                                                                                                                                                                              
+--------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 101594 | [{"at": "2026-10-07T11:10:35+03:00", "type": "start"}, {"at": "2026-10-07T12:10:35+03:00", "type": "interim", "in_mb": 162.969, "out_mb": 31.246}, {"at": "2026-10-07T13:10:35+03:00", "type": "interim", "in_mb": 325.938, "out_mb": 62.492}, {"at": "2026-10-07T14:10:35+03:00", "type": "interim", "in_mb": 488.907, "out_mb": 93.738}, {"at": "2026-10-07T14:34:43+03:00", "type": "coa", "rate_mbps": 500}, {"at": "2026-10-07T14:35:43+03:00", "type": "stop", "cause": "lost_carrier"}]
+
+изменено записей: 1
+6.5 jsonb_insert (insert_after = true): узел bras01-1 переслал потерянные промежуточные обновления — первое вставляется сразу после события start
+SELECT min(id) AS u_id FROM lab7.session_record
+WHERE doc @> '{"source": {"nas": {"name": "bras01-1"}}}'
+  AND doc @? '$ ? (@.session.duration_s > 3600)'
+  AND NOT doc @? '$.events[*] ? (@.type == "interim")' 
+SELECT id, doc #>> '{session,duration_s}' AS duration_s, doc #> '{session,traffic}' AS traffic, doc -> 'events' AS before
+FROM lab7.session_record WHERE id = 8591;
+  id  | duration_s |                                        traffic                                        |                                                               before                                                               
+------+------------+---------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------
+ 8591 | 9799       | {"in": {"mb": 572.085, "packets": 452291}, "out": {"mb": 189.668, "packets": 420189}} | [{"at": "2024-12-27T06:17:54+03:00", "type": "start"}, {"at": "2024-12-27T09:01:13+03:00", "type": "stop", "cause": "nas_reboot"}]
+
+UPDATE lab7.session_record
+SET doc = jsonb_insert(doc, '{events,0}',
+                       jsonb_build_object(
+                           'at', to_char((doc #>> '{session,started_at}')::timestamptz + interval '1 hour',
+                                         'YYYY-MM-DD"T"HH24:MI:SSTZH:TZM'),
+                           'type', 'interim',
+                           'in_mb',  round((doc #>> '{session,traffic,in,mb}')::numeric * 3600
+                                           / (doc #>> '{session,duration_s}')::int, 3),
+                           'out_mb', round((doc #>> '{session,traffic,out,mb}')::numeric * 3600
+                                           / (doc #>> '{session,duration_s}')::int, 3),
+                           'resent', true),
+                       true)
+WHERE doc @> '{"source": {"nas": {"name": "bras01-1"}}}'
+  AND doc @? '$ ? (@.session.duration_s > 3600)'
+  AND NOT doc @? '$.events[*] ? (@.type == "interim")';
+изменено записей: 18
+SELECT id, doc -> 'events' AS after FROM lab7.session_record WHERE id = 8591;
+  id  |                                                                                                                     after                                                                                                                      
+------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 8591 | [{"at": "2024-12-27T06:17:54+03:00", "type": "start"}, {"at": "2024-12-27T07:17:54+03:00", "type": "interim", "in_mb": 210.175, "out_mb": 69.681, "resent": true}, {"at": "2024-12-27T09:01:13+03:00", "type": "stop", "cause": "nas_reboot"}]
+
+6.6 ||: оператор проверил по жалобе сеансы договора с обрывами связи — в запись добавляется раздел review
+SELECT min(id) AS u_id FROM lab7.session_record
+WHERE doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}' AND doc @> '{"session": {"stop_cause": "lost_carrier"}}' 
+SELECT id, doc ? 'review' AS has_review, doc -> 'review' AS before FROM lab7.session_record WHERE id = 739;
+ id  | has_review | before 
+-----+------------+--------
+ 739 | f          | 
+
+UPDATE lab7.session_record
+SET doc = doc || jsonb_build_object('review', jsonb_build_object(
+                   'by', 'op_donnet',
+                   'at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SSTZH:TZM'),
+                   'result', 'обрывы на стороне абонента: неисправен роутер, рекомендована замена'))
+WHERE doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}' AND doc @> '{"session": {"stop_cause": "lost_carrier"}}';
+изменено записей: 7
+SELECT id, doc ? 'review' AS has_review, doc -> 'review' AS after FROM lab7.session_record WHERE id = 739;
+ id  | has_review |                                                                  after                                                                  
+-----+------------+-----------------------------------------------------------------------------------------------------------------------------------------
+ 739 | t          | {"at": "2026-10-12T00:39:33+03:00", "by": "op_donnet", "result": "обрывы на стороне абонента: неисправен роутер, рекомендована замена"}
+
+6.7 - (удаление ключа): ДонЛинк отключил выдачу служебной метки Class сервером авторизации — старые метки удаляются из атрибутов
+SELECT min(id) AS u_id FROM lab7.session_record
+WHERE doc @> '{"source": {"provider": {"name": "ДонЛинк"}}}' AND doc -> 'attributes' ? 'class' 
+SELECT id, doc -> 'attributes' AS before FROM lab7.session_record WHERE id = 83;
+ id |                                                                                before                                                                                 
+----+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 83 | {"class": "AUTH-0C2D418AED91C424", "domain_name": "isp2", "calling_station_id": "6D:B7:E2:89:8F:0C", "input_peak_rate_kbps": 512000, "output_peak_rate_kbps": 512000}
+
+UPDATE lab7.session_record
+SET doc = jsonb_set(doc, '{attributes}', (doc -> 'attributes') - 'class')
+WHERE doc @> '{"source": {"provider": {"name": "ДонЛинк"}}}' AND doc -> 'attributes' ? 'class';
+изменено записей: 3269
+SELECT id, doc -> 'attributes' AS after FROM lab7.session_record WHERE id = 83;
+ id |                                                                after                                                                
+----+-------------------------------------------------------------------------------------------------------------------------------------
+ 83 | {"domain_name": "isp2", "calling_station_id": "6D:B7:E2:89:8F:0C", "input_peak_rate_kbps": 512000, "output_peak_rate_kbps": 512000}
+
+6.8 #- (удаление по пути): MAC-адрес оборудования абонента — персональные сведения, хранится не дольше года; из записей 2024 года удаляется
+SELECT min(id) AS u_id FROM lab7.session_record
+WHERE (doc #>> '{session,started_at}')::timestamptz < '2025-01-01' AND doc -> 'attributes' ? 'calling_station_id' 
+SELECT id, doc -> 'attributes' AS before FROM lab7.session_record WHERE id = 1;
+ id |                                                                  before                                                                  
+----+------------------------------------------------------------------------------------------------------------------------------------------
+  1 | {"class": "AUTH-2408CDC9E9BF0C02", "rate_limit": "500M/500M", "framed_pool": "pool-bras16-2", "calling_station_id": "2B:33:57:C5:90:63"}
+
+UPDATE lab7.session_record
+SET doc = doc #- '{attributes,calling_station_id}'
+WHERE (doc #>> '{session,started_at}')::timestamptz < '2025-01-01' AND doc -> 'attributes' ? 'calling_station_id';
+изменено записей: 8788
+SELECT id, doc -> 'attributes' AS after FROM lab7.session_record WHERE id = 1;
+ id |                                             after                                             
+----+-----------------------------------------------------------------------------------------------
+  1 | {"class": "AUTH-2408CDC9E9BF0C02", "rate_limit": "500M/500M", "framed_pool": "pool-bras16-2"}
+
+6.9 jsonb_strip_nulls: пустые (null) атрибуты — Huawei без domain_name, Accel-PPP без framed_pool — удаляются из атрибутов
+SELECT min(id) AS u_id FROM lab7.session_record WHERE doc -> 'attributes' @? '$.* ? (@ == null)' 
+SELECT id, doc -> 'attributes' AS before FROM lab7.session_record WHERE id = 28;
+ id |                                         before                                         
+----+----------------------------------------------------------------------------------------
+ 28 | {"domain_name": null, "input_peak_rate_kbps": 102400, "output_peak_rate_kbps": 102400}
+
+UPDATE lab7.session_record
+SET doc = jsonb_set(doc, '{attributes}', jsonb_strip_nulls(doc -> 'attributes'))
+WHERE doc -> 'attributes' @? '$.* ? (@ == null)';
+изменено записей: 16424
+SELECT id, doc -> 'attributes' AS after FROM lab7.session_record WHERE id = 28;
+ id |                               after                               
+----+-------------------------------------------------------------------
+ 28 | {"input_peak_rate_kbps": 102400, "output_peak_rate_kbps": 102400}

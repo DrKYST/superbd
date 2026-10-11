@@ -1,0 +1,63 @@
+Запрос 5.3_attr_card (05_functions.sql)
+Раздел задания: Функции: jsonb_each_text, jsonb_typeof
+Зачем: Инженер нашёл в журнале NAS идентификатор сеанса (Acct-Session-Id) и смотрит все атрибуты этого сеанса парами «ключ — значение» с типом JSON
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT a.key, a.value, jsonb_typeof(r.doc -> 'attributes' -> a.key) AS json_type
+FROM lab7.session_record r
+CROSS JOIN LATERAL jsonb_each_text(r.doc -> 'attributes') AS a
+WHERE r.doc #>> '{source,provider,name}' = :'q_provider'
+  AND r.doc #>> '{session,acct_id}' = :'q_acct'
+ORDER BY a.key;
+
+-- Результат (первые строки)
+          key          |       value       | json_type 
+-----------------------+-------------------+-----------
+ calling_station_id    | E3:18:72:E7:2C:F9 | string
+ downstream_limit_kbps | 100000            | number
+ framed_pool           | pool-bras01-1     | string
+ framed_protocol       | ppp               | string
+ nas_port_id           | ens1f0.150        | string
+ upstream_limit_kbps   | 50000             | number
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Gather Merge  (cost=21763.86..21798.80 rows=300 width=96) (actual time=73.886..81.774 rows=6.00 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=19999
+  ->  Sort  (cost=20763.84..20764.15 rows=125 width=96) (actual time=35.553..35.555 rows=2.00 loops=3)
+        Sort Key: a.key
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=19999
+        Worker 0:  Sort Method: quicksort  Memory: 25kB
+        Worker 1:  Sort Method: quicksort  Memory: 25kB
+        ->  Nested Loop  (cost=0.01..20759.48 rows=125 width=96) (actual time=30.215..35.493 rows=2.00 loops=3)
+              Buffers: shared hit=19923
+              ->  Parallel Seq Scan on session_record r  (cost=0.00..20756.54 rows=1 width=1422) (actual time=29.998..35.267 rows=0.33 loops=3)
+                    Filter: (((doc #>> '{source,provider,name}'::text[]) = 'ДонНет'::text) AND ((doc #>> '{session,acct_id}'::text[]) = '84AB7736'::text))
+                    Rows Removed by Filter: 33341
+                    Buffers: shared hit=19923
+              ->  Function Scan on jsonb_each_text a  (cost=0.01..1.00 rows=100 width=64) (actual time=0.602..0.604 rows=6.00 loops=1)
+Planning Time: 0.091 ms
+Execution Time: 81.821 ms
+
+-- План «после»: с индексами, второй прогон
+Sort  (cost=14.51..14.76 rows=100 width=96) (actual time=0.070..0.071 rows=6.00 loops=1)
+  Sort Key: a.key
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=4
+  ->  Nested Loop  (cost=0.42..11.19 rows=100 width=96) (actual time=0.049..0.059 rows=6.00 loops=1)
+        Buffers: shared hit=4
+        ->  Index Scan using uq_session_record_provider_acct on session_record r  (cost=0.42..8.44 rows=1 width=1422) (actual time=0.032..0.032 rows=1.00 loops=1)
+              Index Cond: (((doc #>> '{source,provider,name}'::text[]) = 'ДонНет'::text) AND ((doc #>> '{session,acct_id}'::text[]) = '84AB7736'::text))
+              Index Searches: 1
+              Buffers: shared hit=4
+        ->  Function Scan on jsonb_each_text a  (cost=0.01..1.00 rows=100 width=64) (actual time=0.011..0.012 rows=6.00 loops=1)
+Planning Time: 0.146 ms
+Execution Time: 0.091 ms
+
+Итог: стоимость верхнего узла 21 798.80 → 14.76; время выполнения 81.821 → 0.091 мс; индексы в плане «после»: uq_session_record_provider_acct

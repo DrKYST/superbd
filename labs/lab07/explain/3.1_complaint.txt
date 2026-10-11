@@ -1,0 +1,74 @@
+Запрос 3.1_complaint (03_select_operators.sql)
+Раздел задания: Поля, объекты, массивы: ->, ->>, #>, #>>, @> (несколько условий)
+Зачем: Оператор разбирает жалобу абонента на обрывы связи: последние сеансы договора в 2026 году — начало, длительность, причина завершения, узел доступа, трафик (объект)
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT doc #>> '{session,started_at}'              AS started_at,
+       (doc #>> '{session,duration_s}')::int / 60  AS minutes,
+       doc -> 'session' ->> 'stop_cause'           AS stop_cause,
+       doc -> 'source' -> 'nas' ->> 'name'         AS nas,
+       doc #> '{session,traffic}'                  AS traffic
+FROM lab7.session_record
+WHERE doc @> :'q_contract_doc'                                         -- провайдер и номер договора
+  AND (doc #>> '{session,started_at}')::timestamptz >= :'q_year_from'
+ORDER BY (doc #>> '{session,started_at}')::timestamptz DESC
+LIMIT 10;
+
+-- Результат (первые строки)
+        started_at         | minutes |  stop_cause  |   nas    |                                         traffic                                         
+---------------------------+---------+--------------+----------+-----------------------------------------------------------------------------------------
+ 2026-10-07T11:10:35+03:00 |     205 | lost_carrier | bras01-1 | {"in": {"mb": 557.173, "packets": 393895}, "out": {"mb": 106.827, "packets": 278409}}
+ 2026-10-07T06:05:46+03:00 |     121 | lost_carrier | bras01-1 | {"in": {"mb": 1291.016, "packets": 1014108}, "out": {"mb": 402.984, "packets": 908708}}
+ 2026-10-07T01:00:57+03:00 |      95 | idle_timeout | bras01-1 | {"in": {"mb": 304.143, "packets": 234977}, "out": {"mb": 19.857, "packets": 100279}}
+ 2026-07-12T23:03:27+03:00 |      38 | lost_carrier | bras01-1 | {"in": {"mb": 417.630, "packets": 326126}, "out": {"mb": 106.984, "packets": 258314}}
+ 2026-04-13T15:31:46+03:00 |      29 | idle_timeout | bras01-1 | {"in": {"mb": 153.995, "packets": 115341}, "out": {"mb": 32.560, "packets": 83442}}
+ 2026-04-06T03:23:48+03:00 |       0 | user_request | bras01-1 | {"in": {"mb": 1.670, "packets": 1199}, "out": {"mb": 0.212, "packets": 678}}
+ 2026-03-10T14:23:18+03:00 |     163 | lost_carrier | bras01-1 | {"in": {"mb": 438.829, "packets": 345625}, "out": {"mb": 110.072, "packets": 268796}}
+ 2026-02-19T12:59:52+03:00 |       1 | lost_carrier | bras01-1 | {"in": {"mb": 9.503, "packets": 7291}, "out": {"mb": 0.743, "packets": 3302}}
+ 2026-02-01T19:18:15+03:00 |      16 | idle_timeout | bras01-1 | {"in": {"mb": 59.888, "packets": 45428}, "out": {"mb": 15.276, "packets": 36542}}
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=21906.10..21906.12 rows=10 width=140) (actual time=72.137..84.576 rows=9.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21906.10..21906.93 rows=333 width=140) (actual time=72.135..84.571 rows=9.00 loops=1)
+        Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+        Sort Method: quicksort  Memory: 27kB
+        Buffers: shared hit=19923
+        ->  Gather  (cost=1000.00..21898.90 rows=333 width=140) (actual time=20.860..84.534 rows=9.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=19923
+              ->  Parallel Seq Scan on session_record  (cost=0.00..20865.60 rows=139 width=140) (actual time=9.712..31.426 rows=3.00 loops=3)
+                    Filter: ((doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-01-01 00:00:00+03'::timestamp with time zone))
+                    Rows Removed by Filter: 33339
+                    Buffers: shared hit=19923
+Planning Time: 0.141 ms
+Execution Time: 84.640 ms
+
+-- План «после»: с индексами, второй прогон
+Limit  (cost=3340.96..3340.99 rows=10 width=140) (actual time=0.160..0.161 rows=9.00 loops=1)
+  Buffers: shared hit=23
+  ->  Sort  (cost=3340.96..3341.79 rows=333 width=140) (actual time=0.160..0.161 rows=9.00 loops=1)
+        Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+        Sort Method: quicksort  Memory: 27kB
+        Buffers: shared hit=23
+        ->  Bitmap Heap Scan on session_record  (cost=43.67..3333.76 rows=333 width=140) (actual time=0.066..0.155 rows=9.00 loops=1)
+              Recheck Cond: (doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb)
+              Filter: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-01-01 00:00:00+03'::timestamp with time zone)
+              Rows Removed by Filter: 7
+              Heap Blocks: exact=15
+              Buffers: shared hit=23
+              ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..43.59 rows=1000 width=0) (actual time=0.043..0.043 rows=16.00 loops=1)
+                    Index Cond: (doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=8
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.110 ms
+Execution Time: 0.179 ms
+
+Итог: стоимость верхнего узла 21 906.12 → 3 340.99; время выполнения 84.640 → 0.179 мс; индексы в плане «после»: ix_session_record_doc

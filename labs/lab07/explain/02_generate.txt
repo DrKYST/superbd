@@ -1,0 +1,9 @@
+-- Вывод labs/lab07/sql/02_generate.sql (psql -f, ON_ERROR_STOP)
+
+ documents | service_test | failed | table_size | avg_doc_bytes | max_doc_bytes 
+-----------+--------------+--------+------------+---------------+---------------
+    101625 |          400 |   1200 | 160 MB     |          1427 |          1832
+
+ depth4_nas_location | depth4_traffic | depth4_tariff_window | first_session | last_session 
+---------------------+----------------+----------------------+---------------+--------------
+              101625 |         101625 |                94891 | 2024-01-02    | 2026-10-11

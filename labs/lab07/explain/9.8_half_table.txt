@@ -1,0 +1,86 @@
+Запрос 9.8_half_table (09_optimize.sql)
+Раздел задания: индекс выбран по заниженной оценке, но выигрыша нет: условию отвечает больше половины записей
+Зачем: Аналитик считает сеансы, завершённые самим абонентом (user_request), по производителям: для @> по jsonb статистики по содержимому нет, планировщик оценивает 1 000 строк вместо ~55 000, выбирает индекс — и читает почти все страницы таблицы
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT doc #>> '{source,nas,vendor}' AS vendor, count(*) AS sessions
+FROM lab7.session_record
+WHERE doc @> '{"session": {"stop_cause": "user_request"}}'
+GROUP BY 1
+ORDER BY 1;
+
+-- Результат (первые строки)
+  vendor   | sessions 
+-----------+----------
+ Accel-PPP |    10825
+ Cisco     |    10913
+ Huawei    |    11046
+ Juniper   |    11258
+ MikroTik  |    10826
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+GroupAggregate  (cost=21225.64..21245.64 rows=1000 width=40) (actual time=60.523..63.206 rows=5.00 loops=1)
+  Group Key: ((doc #>> '{source,nas,vendor}'::text[]))
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21225.64..21228.14 rows=1000 width=32) (actual time=59.857..60.936 rows=54868.00 loops=1)
+        Sort Key: ((doc #>> '{source,nas,vendor}'::text[]))
+        Sort Method: quicksort  Memory: 1537kB
+        Buffers: shared hit=19923
+        ->  Seq Scan on session_record  (cost=0.00..21175.81 rows=1000 width=32) (actual time=0.015..53.287 rows=54868.00 loops=1)
+              Filter: (doc @> '{"session": {"stop_cause": "user_request"}}'::jsonb)
+              Rows Removed by Filter: 45157
+              Buffers: shared hit=19923
+Planning Time: 0.101 ms
+Execution Time: 63.435 ms
+
+-- План «после»: с индексами, второй прогон
+GroupAggregate  (cost=3347.37..3367.37 rows=1000 width=40) (actual time=55.379..58.066 rows=5.00 loops=1)
+  Group Key: ((doc #>> '{source,nas,vendor}'::text[]))
+  Buffers: shared hit=19582
+  ->  Sort  (cost=3347.37..3349.87 rows=1000 width=32) (actual time=54.707..55.782 rows=54868.00 loops=1)
+        Sort Key: ((doc #>> '{source,nas,vendor}'::text[]))
+        Sort Method: quicksort  Memory: 1537kB
+        Buffers: shared hit=19582
+        ->  Bitmap Heap Scan on session_record  (cost=26.61..3297.54 rows=1000 width=32) (actual time=5.010..47.861 rows=54868.00 loops=1)
+              Recheck Cond: (doc @> '{"session": {"stop_cause": "user_request"}}'::jsonb)
+              Heap Blocks: exact=19567
+              Buffers: shared hit=19582
+              ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..26.36 rows=1000 width=0) (actual time=3.399..3.399 rows=54868.00 loops=1)
+                    Index Cond: (doc @> '{"session": {"stop_cause": "user_request"}}'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=15
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.164 ms
+Execution Time: 58.337 ms
+
+-- Для сравнения: тот же запрос с индексами, но SET enable_bitmapscan = off
+GroupAggregate  (cost=21225.64..21245.64 rows=1000 width=40) (actual time=77.966..80.610 rows=5.00 loops=1)
+  Group Key: ((doc #>> '{source,nas,vendor}'::text[]))
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21225.64..21228.14 rows=1000 width=32) (actual time=77.306..78.375 rows=54868.00 loops=1)
+        Sort Key: ((doc #>> '{source,nas,vendor}'::text[]))
+        Sort Method: quicksort  Memory: 1537kB
+        Buffers: shared hit=19923
+        ->  Seq Scan on session_record  (cost=0.00..21175.81 rows=1000 width=32) (actual time=0.021..70.027 rows=54868.00 loops=1)
+              Filter: (doc @> '{"session": {"stop_cause": "user_request"}}'::jsonb)
+              Rows Removed by Filter: 45157
+              Buffers: shared hit=19923
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.188 ms
+Execution Time: 81.030 ms
+
+-- Сравнение узлов: «после» (с индексами) и «до» (без индексов)
+| Узел «после» | cost | время, мс | Узел «до» | cost | время, мс | Стоимость не выросла |
+|---|---|---|---|---|---|---|
+| GroupAggregate | 3367.37 | 58.066 × 1 | GroupAggregate | 21245.64 | 63.206 × 1 | да |
+| · Sort | 3349.87 | 55.782 × 1 | Sort | 21228.14 | 60.936 × 1 | да |
+| · · Bitmap Heap Scan on session_record | 3297.54 | 47.861 × 1 | Seq Scan on session_record | 21175.81 | 53.287 × 1 | да |
+| · · · Bitmap Index Scan on ix_session_record_doc | 26.36 | 3.399 × 1 | — | | | входит в узел выше |
+
+Итог: стоимость верхнего узла 21 245.64 → 3 367.37; время выполнения 63.435 → 58.337 мс; индексы в плане «после»: ix_session_record_doc — пример, где индекс не даёт выигрыша (причина — в «Зачем» и в README)

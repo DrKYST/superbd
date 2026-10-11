@@ -1,0 +1,76 @@
+Запрос 3.3_lost_carrier (03_select_operators.sql)
+Раздел задания: Объекты и массивы: #>, -> (индекс массива), @> по вложенному объекту, несколько условий
+Зачем: Инженер ищет неисправную линию: обрывы связи (lost_carrier) на узлах доступа Макеевки в III квартале 2026 года — расположение узла (объект), число событий и последнее событие сеанса (элемент массива)
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT doc #>> '{source,nas,name}'           AS nas,
+       doc #> '{source,nas,location}'        AS location,
+       doc #>> '{contract,number}'           AS contract,
+       jsonb_array_length(doc -> 'events')   AS events,
+       doc -> 'events' -> -1                 AS last_event
+FROM lab7.session_record
+WHERE doc @> '{"session": {"stop_cause": "lost_carrier"}, "source": {"nas": {"location": {"city": "Макеевка"}}}}'
+  AND (doc #>> '{session,started_at}')::timestamptz >= '2026-07-01'
+  AND (doc #>> '{session,started_at}')::timestamptz <  '2026-10-01'
+ORDER BY (doc #>> '{session,started_at}')::timestamptz
+LIMIT 10;
+
+-- Результат (первые строки)
+   nas    |                            location                            |   contract    | events |                                  last_event                                  
+----------+----------------------------------------------------------------+---------------+--------+------------------------------------------------------------------------------
+ bras08-3 | {"city": "Макеевка", "address": "пр. Мира, д. 25"}             | Д-2025-004771 |      2 | {"at": "2026-07-01T14:58:07+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras08-3 | {"city": "Макеевка", "address": "пр. Мира, д. 25"}             | Д-2025-006845 |      2 | {"at": "2026-07-01T20:17:59+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras20-3 | {"city": "Макеевка", "address": "пр. Ленинский, д. 41"}        | Д-2025-007676 |      2 | {"at": "2026-07-02T04:35:00+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras13-1 | {"city": "Макеевка", "address": "ул. Горького, д. 53, оф. 19"} | Д-2026-009853 |      2 | {"at": "2026-07-02T10:00:44+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras19-1 | {"city": "Макеевка", "address": "ул. Гагарина, д. 61, оф. 10"} | Д-2025-006977 |      3 | {"at": "2026-07-02T20:11:51+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras19-1 | {"city": "Макеевка", "address": "ул. Гагарина, д. 61, оф. 10"} | Д-2025-008159 |      5 | {"at": "2026-07-03T02:38:11+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras13-1 | {"city": "Макеевка", "address": "ул. Горького, д. 53, оф. 19"} | Д-2026-010480 |      2 | {"at": "2026-07-02T22:36:58+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras13-1 | {"city": "Макеевка", "address": "ул. Горького, д. 53, оф. 19"} | Д-2024-000342 |      2 | {"at": "2026-07-02T23:04:12+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras07-2 | {"city": "Макеевка", "address": "пр. Мира, д. 135"}            | Д-2026-009937 |      5 | {"at": "2026-07-03T18:52:51+03:00", "type": "stop", "cause": "lost_carrier"}
+ bras19-2 | {"city": "Макеевка", "address": "пр. Ленинский, д. 11"}        | Д-2026-010901 |      2 | {"at": "2026-07-03T22:10:19+03:00", "type": "stop", "cause": "lost_carrier"}
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=22278.11..22278.13 rows=5 width=140) (actual time=75.229..84.621 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=22278.11..22278.13 rows=5 width=140) (actual time=75.227..84.618 rows=10.00 loops=1)
+        Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone)
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=19923
+        ->  Gather  (cost=1000.00..22278.06 rows=5 width=140) (actual time=42.740..84.469 rows=352.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=19923
+              ->  Parallel Seq Scan on session_record  (cost=0.00..21277.56 rows=2 width=140) (actual time=14.210..33.489 rows=117.33 loops=3)
+                    Filter: ((doc @> '{"source": {"nas": {"location": {"city": "Макеевка"}}}, "session": {"stop_cause": "lost_carrier"}}'::jsonb) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-07-01 00:00:00+03'::timestamp with time zone) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone < '2026-10-01 00:00:00+03'::timestamp with time zone))
+                    Rows Removed by Filter: 33224
+                    Buffers: shared hit=19923
+Planning Time: 0.110 ms
+Execution Time: 84.662 ms
+
+-- План «после»: с индексами, второй прогон
+Limit  (cost=3332.21..3332.22 rows=5 width=140) (actual time=5.367..5.370 rows=10.00 loops=1)
+  Buffers: shared hit=1321
+  ->  Sort  (cost=3332.21..3332.22 rows=5 width=140) (actual time=5.366..5.368 rows=10.00 loops=1)
+        Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone)
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=1321
+        ->  Bitmap Heap Scan on session_record  (cost=43.59..3332.15 rows=5 width=140) (actual time=2.210..5.317 rows=352.00 loops=1)
+              Recheck Cond: (doc @> '{"source": {"nas": {"location": {"city": "Макеевка"}}}, "session": {"stop_cause": "lost_carrier"}}'::jsonb)
+              Filter: ((((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-07-01 00:00:00+03'::timestamp with time zone) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone < '2026-10-01 00:00:00+03'::timestamp with time zone))
+              Rows Removed by Filter: 993
+              Heap Blocks: exact=1302
+              Buffers: shared hit=1321
+              ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..43.59 rows=1000 width=0) (actual time=0.550..0.550 rows=1345.00 loops=1)
+                    Index Cond: (doc @> '{"source": {"nas": {"location": {"city": "Макеевка"}}}, "session": {"stop_cause": "lost_carrier"}}'::jsonb)
+                    Index Searches: 1
+                    Buffers: shared hit=19
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.134 ms
+Execution Time: 5.458 ms
+
+Итог: стоимость верхнего узла 22 278.13 → 3 332.22; время выполнения 84.662 → 5.458 мс; индексы в плане «после»: ix_session_record_doc

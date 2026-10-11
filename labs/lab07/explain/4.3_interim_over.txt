@@ -1,0 +1,74 @@
+Запрос 4.3_interim_over (04_jsonpath.sql)
+Раздел задания: jsonpath: jsonb_path_query с переменной $mb (vars)
+Зачем: Оператор отвечает абоненту, жалующемуся на перерасход трафика: промежуточные обновления его сеансов, в которых накопленный входящий трафик превысил порог (порог — переменная пути)
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT doc #>> '{session,started_at}'        AS session_started,
+       jsonb_path_query(doc, '$.events[*] ? (@.type == "interim" && @.in_mb > $mb)',
+                        jsonb_build_object('mb', 200)) AS interim_update
+FROM lab7.session_record
+WHERE doc @> :'q_contract_doc'
+ORDER BY (doc #>> '{session,started_at}')::timestamptz DESC
+LIMIT 10;
+
+-- Результат (первые строки)
+      session_started      |                                        interim_update                                        
+---------------------------+----------------------------------------------------------------------------------------------
+ 2026-10-07T11:10:35+03:00 | {"at": "2026-10-07T13:10:35+03:00", "type": "interim", "in_mb": 325.938, "out_mb": 62.492}
+ 2026-10-07T11:10:35+03:00 | {"at": "2026-10-07T14:10:35+03:00", "type": "interim", "in_mb": 488.907, "out_mb": 93.738}
+ 2026-10-07T06:05:46+03:00 | {"at": "2026-10-07T07:05:46+03:00", "type": "interim", "in_mb": 637.189, "out_mb": 198.895}
+ 2026-10-07T06:05:46+03:00 | {"at": "2026-10-07T08:05:46+03:00", "type": "interim", "in_mb": 1274.378, "out_mb": 397.791}
+ 2026-03-10T14:23:18+03:00 | {"at": "2026-03-10T16:23:18+03:00", "type": "interim", "in_mb": 322.932, "out_mb": 81.001}
+ 2025-11-12T01:05:22+03:00 | {"at": "2025-11-12T03:05:22+03:00", "type": "interim", "in_mb": 312.459, "out_mb": 56.723}
+ 2025-11-12T01:05:22+03:00 | {"at": "2025-11-12T04:05:22+03:00", "type": "interim", "in_mb": 468.688, "out_mb": 85.085}
+ 2025-08-25T14:09:51+03:00 | {"at": "2025-08-25T16:09:51+03:00", "type": "interim", "in_mb": 377.671, "out_mb": 47.942}
+ 2025-08-25T14:09:51+03:00 | {"at": "2025-08-25T17:09:51+03:00", "type": "interim", "in_mb": 566.507, "out_mb": 71.914}
+ 2024-10-10T18:01:27+03:00 | {"at": "2024-10-10T19:01:27+03:00", "type": "interim", "in_mb": 278.060, "out_mb": 16.898}
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=21233.14..21233.19 rows=10 width=72) (actual time=44.073..44.100 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  ProjectSet  (cost=21233.14..26275.64 rows=1000000 width=72) (actual time=44.072..44.098 rows=10.00 loops=1)
+        Buffers: shared hit=19923
+        ->  Result  (cost=21233.14..21255.64 rows=1000 width=1462) (actual time=44.031..44.035 rows=14.00 loops=1)
+              Buffers: shared hit=19923
+              ->  Sort  (cost=21233.14..21235.64 rows=1000 width=1462) (actual time=44.029..44.031 rows=14.00 loops=1)
+                    Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+                    Sort Method: quicksort  Memory: 50kB
+                    Buffers: shared hit=19923
+                    ->  Seq Scan on session_record  (cost=0.00..21183.31 rows=1000 width=1462) (actual time=6.860..43.954 rows=16.00 loops=1)
+                          Filter: (doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb)
+                          Rows Removed by Filter: 100009
+                          Buffers: shared hit=19923
+Planning Time: 0.071 ms
+Execution Time: 44.133 ms
+
+-- План «после»: с индексами, второй прогон
+Limit  (cost=3372.11..3372.16 rows=10 width=72) (actual time=0.106..0.128 rows=10.00 loops=1)
+  Buffers: shared hit=23
+  ->  ProjectSet  (cost=3372.11..8414.61 rows=1000000 width=72) (actual time=0.105..0.127 rows=10.00 loops=1)
+        Buffers: shared hit=23
+        ->  Result  (cost=3372.11..3394.61 rows=1000 width=1462) (actual time=0.099..0.101 rows=14.00 loops=1)
+              Buffers: shared hit=23
+              ->  Sort  (cost=3372.11..3374.61 rows=1000 width=1462) (actual time=0.099..0.099 rows=14.00 loops=1)
+                    Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+                    Sort Method: quicksort  Memory: 50kB
+                    Buffers: shared hit=23
+                    ->  Bitmap Heap Scan on session_record  (cost=43.84..3322.28 rows=1000 width=1462) (actual time=0.048..0.089 rows=16.00 loops=1)
+                          Recheck Cond: (doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb)
+                          Heap Blocks: exact=15
+                          Buffers: shared hit=23
+                          ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..43.59 rows=1000 width=0) (actual time=0.037..0.037 rows=16.00 loops=1)
+                                Index Cond: (doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb)
+                                Index Searches: 1
+                                Buffers: shared hit=8
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.057 ms
+Execution Time: 0.145 ms
+
+Итог: стоимость верхнего узла 21 233.19 → 3 372.16; время выполнения 44.133 → 0.145 мс; индексы в плане «после»: ix_session_record_doc

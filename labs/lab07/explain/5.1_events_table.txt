@@ -1,0 +1,92 @@
+Запрос 5.1_events_table (05_functions.sql)
+Раздел задания: Функции: jsonb_array_elements WITH ORDINALITY, jsonb_to_record
+Зачем: Оператор разбирает жалобу на обрыв: журнал событий трёх последних сеансов договора таблицей — когда пришли старт, промежуточные обновления (накопленный трафик) и завершение с причиной
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT r.doc #>> '{session,acct_id}'  AS acct_id,
+       a.ord,
+       e.at, e.type, e.in_mb, e.out_mb, e.cause
+FROM (SELECT doc FROM lab7.session_record
+      WHERE doc @> :'q_contract_doc'
+      ORDER BY (doc #>> '{session,started_at}')::timestamptz DESC
+      LIMIT 3) r
+CROSS JOIN LATERAL jsonb_array_elements(r.doc -> 'events') WITH ORDINALITY AS a(ev, ord)
+CROSS JOIN LATERAL jsonb_to_record(a.ev) AS e(at timestamptz, type text, in_mb numeric, out_mb numeric, cause text)
+ORDER BY e.at DESC, a.ord DESC;
+
+-- Результат (первые строки)
+ acct_id  | ord |           at           |  type   |  in_mb   | out_mb  |    cause     
+----------+-----+------------------------+---------+----------+---------+--------------
+ 84AB7736 |   6 | 2026-10-07 14:35:43+03 | stop    |          |         | lost_carrier
+ 84AB7736 |   5 | 2026-10-07 14:34:43+03 | coa     |          |         | 
+ 84AB7736 |   4 | 2026-10-07 14:10:35+03 | interim |  488.907 |  93.738 | 
+ 84AB7736 |   3 | 2026-10-07 13:10:35+03 | interim |  325.938 |  62.492 | 
+ 84AB7736 |   2 | 2026-10-07 12:10:35+03 | interim |  162.969 |  31.246 | 
+ 84AB7736 |   1 | 2026-10-07 11:10:35+03 | start   |          |         | 
+ 84AB772C |   4 | 2026-10-07 08:07:20+03 | stop    |          |         | lost_carrier
+ 84AB772C |   3 | 2026-10-07 08:05:46+03 | interim | 1274.378 | 397.791 | 
+ 84AB772C |   2 | 2026-10-07 07:05:46+03 | interim |  637.189 | 198.895 | 
+ 84AB772C |   1 | 2026-10-07 06:05:46+03 | start   |          |         | 
+ 84AB7722 |   3 | 2026-10-07 02:36:50+03 | stop    |          |         | idle_timeout
+ 84AB7722 |   2 | 2026-10-07 02:00:57+03 | interim |  190.321 |  12.426 | 
+ 84AB7722 |   1 | 2026-10-07 01:00:57+03 | start   |          |         | 
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Sort  (cost=21218.88..21219.63 rows=300 width=176) (actual time=39.098..39.099 rows=13.00 loops=1)
+  Sort Key: e.at DESC, a.ord DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=19923
+  ->  Nested Loop  (cost=21193.74..21206.53 rows=300 width=176) (actual time=39.053..39.093 rows=13.00 loops=1)
+        Buffers: shared hit=19923
+        ->  Nested Loop  (cost=21193.74..21199.78 rows=300 width=1462) (actual time=39.041..39.045 rows=13.00 loops=1)
+              Buffers: shared hit=19923
+              ->  Limit  (cost=21193.74..21193.74 rows=3 width=1430) (actual time=39.021..39.022 rows=3.00 loops=1)
+                    Buffers: shared hit=19923
+                    ->  Sort  (cost=21193.74..21196.24 rows=1000 width=1430) (actual time=39.020..39.021 rows=3.00 loops=1)
+                          Sort Key: (((session_record.doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+                          Sort Method: top-N heapsort  Memory: 35kB
+                          Buffers: shared hit=19923
+                          ->  Seq Scan on session_record  (cost=0.00..21180.81 rows=1000 width=1430) (actual time=4.903..38.989 rows=16.00 loops=1)
+                                Filter: (doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb)
+                                Rows Removed by Filter: 100009
+                                Buffers: shared hit=19923
+              ->  Function Scan on jsonb_array_elements a  (cost=0.01..1.00 rows=100 width=40) (actual time=0.006..0.006 rows=4.33 loops=3)
+        ->  Function Scan on jsonb_to_record e  (cost=0.00..0.01 rows=1 width=136) (actual time=0.002..0.002 rows=1.00 loops=13)
+Planning Time: 0.095 ms
+Execution Time: 39.116 ms
+
+-- План «после»: с индексами, второй прогон
+Sort  (cost=3357.84..3358.59 rows=300 width=176) (actual time=0.137..0.138 rows=13.00 loops=1)
+  Sort Key: e.at DESC, a.ord DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=23
+  ->  Nested Loop  (cost=3332.71..3345.50 rows=300 width=176) (actual time=0.096..0.133 rows=13.00 loops=1)
+        Buffers: shared hit=23
+        ->  Nested Loop  (cost=3332.71..3338.74 rows=300 width=1462) (actual time=0.089..0.093 rows=13.00 loops=1)
+              Buffers: shared hit=23
+              ->  Limit  (cost=3332.70..3332.71 rows=3 width=1430) (actual time=0.084..0.085 rows=3.00 loops=1)
+                    Buffers: shared hit=23
+                    ->  Sort  (cost=3332.70..3335.20 rows=1000 width=1430) (actual time=0.084..0.084 rows=3.00 loops=1)
+                          Sort Key: (((session_record.doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+                          Sort Method: top-N heapsort  Memory: 35kB
+                          Buffers: shared hit=23
+                          ->  Bitmap Heap Scan on session_record  (cost=43.84..3319.78 rows=1000 width=1430) (actual time=0.043..0.077 rows=16.00 loops=1)
+                                Recheck Cond: (doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb)
+                                Heap Blocks: exact=15
+                                Buffers: shared hit=23
+                                ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..43.59 rows=1000 width=0) (actual time=0.033..0.033 rows=16.00 loops=1)
+                                      Index Cond: (doc @> '{"source": {"provider": {"name": "ДонНет"}}, "contract": {"number": "Д-2024-000050"}}'::jsonb)
+                                      Index Searches: 1
+                                      Buffers: shared hit=8
+              ->  Function Scan on jsonb_array_elements a  (cost=0.01..1.00 rows=100 width=40) (actual time=0.002..0.002 rows=4.33 loops=3)
+        ->  Function Scan on jsonb_to_record e  (cost=0.00..0.01 rows=1 width=136) (actual time=0.002..0.002 rows=1.00 loops=13)
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.065 ms
+Execution Time: 0.158 ms
+
+Итог: стоимость верхнего узла 21 219.63 → 3 358.59; время выполнения 39.116 → 0.158 мс; индексы в плане «после»: ix_session_record_doc

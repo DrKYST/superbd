@@ -1,0 +1,141 @@
+Запрос 9.5_month (09_optimize.sql)
+Раздел задания: ::timestamptz → строка ISO 8601 с COLLATE "C" (B-дерево по времени начала)
+Зачем: Аналитик сверяет выгрузку с отчётом курсовой «Доли провайдеров»: трафик и оплата трафика по провайдерам за месяц; приведение к timestamptz индексировать нельзя, строку ISO 8601 — можно
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL: исходная форма («до»)
+SELECT doc #>> '{source,provider,name}'                       AS provider,
+       count(*)                                               AS sessions,
+       sum((doc #>> '{session,traffic,in,mb}')::numeric
+           + (doc #>> '{session,traffic,out,mb}')::numeric)   AS volume_mb,
+       sum((doc #>> '{billing,cost}')::numeric)               AS traffic_fees
+FROM lab7.session_record
+WHERE (doc #>> '{session,started_at}')::timestamptz >= :'q_from'
+  AND (doc #>> '{session,started_at}')::timestamptz <  :'q_to'
+GROUP BY 1
+ORDER BY 4 DESC, 1
+LIMIT 10;
+
+-- SQL: оптимизированная форма («после»)
+SELECT doc #>> '{source,provider,name}'                       AS provider,
+       count(*)                                               AS sessions,
+       sum((doc #>> '{session,traffic,in,mb}')::numeric
+           + (doc #>> '{session,traffic,out,mb}')::numeric)   AS volume_mb,
+       sum((doc #>> '{billing,cost}')::numeric)               AS traffic_fees
+FROM lab7.session_record
+WHERE (doc #>> '{session,started_at}') COLLATE "C" >= :'q_from'
+  AND (doc #>> '{session,started_at}') COLLATE "C" <  :'q_to'
+GROUP BY 1
+ORDER BY 4 DESC, 1
+LIMIT 10;
+
+-- Результат (первые строки)
+    provider    | sessions | volume_mb  | traffic_fees 
+----------------+----------+------------+--------------
+ СфераЛинк      |      451 | 221926.746 |     18880.67
+ СпектрЛинк     |      435 | 219495.503 |     18740.26
+ СфераКоннект   |      415 | 206705.474 |     18663.50
+ Спектр-Телеком |      388 | 210129.037 |     18102.03
+ Сфера-Телеком  |      387 | 199279.144 |     18069.10
+ ДонНет         |      396 | 207370.159 |     17687.79
+ МегаКоннект    |      418 | 222731.663 |     17475.56
+ Альфа-Телеком  |      422 | 203837.783 |     17407.61
+ ВегаКоннект    |      367 | 192710.441 |     17243.14
+ ВегаНет        |      421 | 194884.305 |     17168.82
+
+Результаты исходной и оптимизированной форм совпадают: да
+
+-- План «до»: исходная форма, без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=22277.15..22277.18 rows=10 width=104) (actual time=152.930..159.046 rows=10.00 loops=1)
+  Buffers: shared hit=19999
+  ->  Sort  (cost=22277.15..22278.40 rows=500 width=104) (actual time=152.930..159.044 rows=10.00 loops=1)
+        Sort Key: (sum(((doc #>> '{billing,cost}'::text[]))::numeric)) DESC, ((doc #>> '{source,provider,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=19999
+        ->  GroupAggregate  (cost=22181.86..22266.35 rows=500 width=104) (actual time=140.333..159.017 rows=30.00 loops=1)
+              Group Key: ((doc #>> '{source,provider,name}'::text[]))
+              Buffers: shared hit=19999
+              ->  Gather Merge  (cost=22181.86..22240.10 rows=500 width=1454) (actual time=139.784..148.630 rows=11134.00 loops=1)
+                    Workers Planned: 2
+                    Workers Launched: 2
+                    Buffers: shared hit=19999
+                    ->  Sort  (cost=21181.84..21182.36 rows=208 width=1454) (actual time=59.281..59.798 rows=3711.33 loops=3)
+                          Sort Key: ((doc #>> '{source,provider,name}'::text[]))
+                          Sort Method: quicksort  Memory: 8599kB
+                          Buffers: shared hit=19999
+                          Worker 0:  Sort Method: quicksort  Memory: 25kB
+                          Worker 1:  Sort Method: quicksort  Memory: 7753kB
+                          ->  Parallel Seq Scan on session_record  (cost=0.00..21173.83 rows=208 width=1454) (actual time=31.070..56.131 rows=3711.33 loops=3)
+                                Filter: ((((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-09-01 00:00:00+03'::timestamp with time zone) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone < '2026-10-01 00:00:00+03'::timestamp with time zone))
+                                Rows Removed by Filter: 29630
+                                Buffers: shared hit=19923
+Planning Time: 0.090 ms
+Execution Time: 159.431 ms
+
+-- План исходной формы при наличии индексов (применим ли индекс без переписывания)
+Limit  (cost=22200.75..22200.78 rows=10 width=104) (actual time=90.059..91.332 rows=10.00 loops=1)
+  Buffers: shared hit=19999
+  ->  Sort  (cost=22200.75..22200.83 rows=30 width=104) (actual time=90.057..91.329 rows=10.00 loops=1)
+        Sort Key: (sum(((doc #>> '{billing,cost}'::text[]))::numeric)) DESC, ((doc #>> '{source,provider,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=19999
+        ->  Finalize GroupAggregate  (cost=22181.86..22200.11 rows=30 width=104) (actual time=85.634..91.309 rows=30.00 loops=1)
+              Group Key: ((doc #>> '{source,provider,name}'::text[]))
+              Buffers: shared hit=19999
+              ->  Gather Merge  (cost=22181.86..22198.50 rows=72 width=104) (actual time=85.267..91.244 rows=90.00 loops=1)
+                    Workers Planned: 2
+                    Workers Launched: 2
+                    Buffers: shared hit=19999
+                    ->  Partial GroupAggregate  (cost=21181.84..21190.17 rows=30 width=104) (actual time=61.661..65.568 rows=30.00 loops=3)
+                          Group Key: ((doc #>> '{source,provider,name}'::text[]))
+                          Buffers: shared hit=19999
+                          ->  Sort  (cost=21181.84..21182.36 rows=208 width=1454) (actual time=61.498..61.827 rows=3711.33 loops=3)
+                                Sort Key: ((doc #>> '{source,provider,name}'::text[]))
+                                Sort Method: quicksort  Memory: 5553kB
+                                Buffers: shared hit=19999
+                                Worker 0:  Sort Method: quicksort  Memory: 5222kB
+                                Worker 1:  Sort Method: quicksort  Memory: 5481kB
+                                ->  Parallel Seq Scan on session_record  (cost=0.00..21173.83 rows=208 width=1454) (actual time=31.037..58.178 rows=3711.33 loops=3)
+                                      Filter: ((((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-09-01 00:00:00+03'::timestamp with time zone) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone < '2026-10-01 00:00:00+03'::timestamp with time zone))
+                                      Rows Removed by Filter: 29630
+                                      Buffers: shared hit=19923
+Planning Time: 0.110 ms
+Execution Time: 91.729 ms
+
+-- План «после»: оптимизированная форма, с индексами, второй прогон
+Limit  (cost=18488.14..18488.17 rows=10 width=104) (actual time=15.285..15.288 rows=10.00 loops=1)
+  Buffers: shared hit=2319
+  ->  Sort  (cost=18488.14..18488.22 rows=30 width=104) (actual time=15.285..15.287 rows=10.00 loops=1)
+        Sort Key: (sum(((doc #>> '{billing,cost}'::text[]))::numeric)) DESC, ((doc #>> '{source,provider,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=2319
+        ->  HashAggregate  (cost=18486.97..18487.50 rows=30 width=104) (actual time=15.259..15.266 rows=30.00 loops=1)
+              Group Key: (doc #>> '{source,provider,name}'::text[])
+              Batches: 1  Memory Usage: 56kB
+              Buffers: shared hit=2319
+              ->  Bitmap Heap Scan on session_record  (cost=381.20..18101.87 rows=11003 width=1454) (actual time=0.641..5.259 rows=11134.00 loops=1)
+                    Recheck Cond: ((((doc #>> '{session,started_at}'::text[]))::text >= '2026-09-01'::text) AND (((doc #>> '{session,started_at}'::text[]))::text < '2026-10-01'::text))
+                    Heap Blocks: exact=2249
+                    Buffers: shared hit=2319
+                    ->  Bitmap Index Scan on ix_session_record_started_at  (cost=0.00..378.45 rows=11003 width=0) (actual time=0.486..0.486 rows=11134.00 loops=1)
+                          Index Cond: ((((doc #>> '{session,started_at}'::text[]))::text >= '2026-09-01'::text) AND (((doc #>> '{session,started_at}'::text[]))::text < '2026-10-01'::text))
+                          Index Searches: 1
+                          Buffers: shared hit=70
+Planning Time: 0.765 ms
+Execution Time: 15.367 ms
+
+-- Сравнение узлов: «после» (с индексами) и «до» (без индексов)
+| Узел «после» | cost | время, мс | Узел «до» | cost | время, мс | Стоимость не выросла |
+|---|---|---|---|---|---|---|
+| Limit | 18488.17 | 15.288 × 1 | Limit | 22277.18 | 159.046 × 1 | да |
+| · Sort | 18488.22 | 15.287 × 1 | Sort | 22278.40 | 159.044 × 1 | да |
+| · · HashAggregate | 18487.50 | 15.266 × 1 | GroupAggregate | 22266.35 | 159.017 × 1 | да |
+| · · · Bitmap Heap Scan on session_record | 18101.87 | 5.259 × 1 | Parallel Seq Scan on session_record | 21173.83 | 56.131 × 3 | да |
+| · · · · Bitmap Index Scan on ix_session_record_started_at | 378.45 | 0.486 × 1 | — | | | входит в узел выше |
+
+Узлы «до», которым нет пары «после» (исчезли из плана): Gather Merge (cost 22240.10); Sort (cost 21182.36)
+
+Итог: стоимость верхнего узла 22 277.18 → 18 488.17; время выполнения 159.431 → 15.367 мс; индексы в плане «после»: ix_session_record_started_at

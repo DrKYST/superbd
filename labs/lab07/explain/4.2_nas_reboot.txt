@@ -1,0 +1,79 @@
+Запрос 4.2_nas_reboot (04_jsonpath.sql)
+Раздел задания: jsonpath: @? с фильтром по элементам массива
+Зачем: Инженер оценивает аварии: сеансы, оборванные перезагрузкой узла доступа (событие stop с причиной nas_reboot), — по узлам: сколько сеансов задело и когда последний раз
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT doc #>> '{source,nas,name}'           AS nas,
+       doc #>> '{source,nas,vendor}'         AS vendor,
+       count(*)                              AS sessions,
+       max((doc #>> '{session,stopped_at}')::timestamptz) AS last_reboot
+FROM lab7.session_record
+WHERE doc @? '$.events[*] ? (@.type == "stop" && @.cause == "nas_reboot")'
+GROUP BY 1, 2
+ORDER BY 3 DESC, 1
+LIMIT 10;
+
+-- Результат (первые строки)
+   nas    |  vendor   | sessions |      last_reboot       
+----------+-----------+----------+------------------------
+ bras06-1 | Accel-PPP |      118 | 2026-10-03 16:23:28+03
+ bras09-1 | Huawei    |      116 | 2026-10-06 00:27:00+03
+ bras21-1 | Accel-PPP |      116 | 2026-10-04 17:25:17+03
+ bras27-1 | Juniper   |      102 | 2026-10-04 22:57:10+03
+ bras18-1 | MikroTik  |      101 | 2026-10-05 07:25:56+03
+ bras24-1 | Huawei    |      101 | 2026-09-30 06:18:43+03
+ bras30-1 | Cisco     |      101 | 2026-10-05 08:42:33+03
+ bras12-1 | Juniper   |       99 | 2026-10-06 21:08:17+03
+ bras03-1 | MikroTik  |       96 | 2026-10-04 23:51:02+03
+ bras15-1 | Cisco     |       88 | 2026-10-06 23:45:29+03
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=21284.75..21284.78 rows=10 width=80) (actual time=71.866..71.871 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21284.75..21287.25 rows=1000 width=80) (actual time=71.863..71.866 rows=10.00 loops=1)
+        Sort Key: (count(*)) DESC, ((doc #>> '{source,nas,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=19923
+        ->  GroupAggregate  (cost=21228.14..21263.14 rows=1000 width=80) (actual time=67.498..71.822 rows=60.00 loops=1)
+              Group Key: ((doc #>> '{source,nas,name}'::text[])), ((doc #>> '{source,nas,vendor}'::text[]))
+              Buffers: shared hit=19923
+              ->  Sort  (cost=21228.14..21230.64 rows=1000 width=1486) (actual time=67.422..67.595 rows=3038.00 loops=1)
+                    Sort Key: ((doc #>> '{source,nas,name}'::text[])), ((doc #>> '{source,nas,vendor}'::text[]))
+                    Sort Method: quicksort  Memory: 4420kB
+                    Buffers: shared hit=19923
+                    ->  Seq Scan on session_record  (cost=0.00..21178.31 rows=1000 width=1486) (actual time=0.040..63.895 rows=3038.00 loops=1)
+                          Filter: (doc @? '$."events"[*]?(@."type" == "stop" && @."cause" == "nas_reboot")'::jsonpath)
+                          Rows Removed by Filter: 96987
+                          Buffers: shared hit=19923
+Planning Time: 0.092 ms
+Execution Time: 72.297 ms
+
+-- План «после»: с индексами, второй прогон
+Limit  (cost=3371.39..3371.41 rows=10 width=80) (actual time=9.447..9.449 rows=10.00 loops=1)
+  Buffers: shared hit=2897
+  ->  Sort  (cost=3371.39..3373.89 rows=1000 width=80) (actual time=9.446..9.447 rows=10.00 loops=1)
+        Sort Key: (count(*)) DESC, ((doc #>> '{source,nas,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=2897
+        ->  HashAggregate  (cost=3334.78..3349.78 rows=1000 width=80) (actual time=9.415..9.422 rows=60.00 loops=1)
+              Group Key: (doc #>> '{source,nas,name}'::text[]), (doc #>> '{source,nas,vendor}'::text[])
+              Batches: 1  Memory Usage: 65kB
+              Buffers: shared hit=2897
+              ->  Bitmap Heap Scan on session_record  (cost=43.84..3317.28 rows=1000 width=1486) (actual time=0.846..5.380 rows=3038.00 loops=1)
+                    Recheck Cond: (doc @? '$."events"[*]?(@."type" == "stop" && @."cause" == "nas_reboot")'::jsonpath)
+                    Heap Blocks: exact=2858
+                    Buffers: shared hit=2897
+                    ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..43.59 rows=1000 width=0) (actual time=0.650..0.650 rows=3038.00 loops=1)
+                          Index Cond: (doc @? '$."events"[*]?(@."type" == "stop" && @."cause" == "nas_reboot")'::jsonpath)
+                          Index Searches: 1
+                          Buffers: shared hit=39
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.129 ms
+Execution Time: 9.541 ms
+
+Итог: стоимость верхнего узла 21 284.78 → 3 371.41; время выполнения 72.297 → 9.541 мс; индексы в плане «после»: ix_session_record_doc

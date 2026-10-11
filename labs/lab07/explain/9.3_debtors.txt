@@ -1,0 +1,89 @@
+Запрос 9.3_debtors (09_optimize.sql)
+Раздел задания: ?| по атрибутам — запрос не меняется, нужен GIN jsonb_ops по attributes
+Зачем: Колл-центр: сеансы должников провайдера (запрос 3.2): наличие ключа индексом по документу (jsonb_path_ops) не ищется — для атрибутов отдельный индекс jsonb_ops
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+SELECT doc #>> '{contract,number}'           AS contract,
+       doc #>> '{session,started_at}'        AS started_at,
+       doc #>> '{source,nas,vendor}'         AS vendor
+FROM lab7.session_record
+WHERE doc -> 'attributes' ?| ARRAY['address_list', 'redirect_url']
+  AND doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', :'q_provider')))
+ORDER BY (doc #>> '{session,started_at}')::timestamptz DESC
+LIMIT 10;
+
+-- Результат (первые строки)
+   contract    |        started_at         |  vendor   
+---------------+---------------------------+-----------
+ Д-2026-010010 | 2026-10-01T14:24:31+03:00 | Accel-PPP
+ Д-2026-011003 | 2026-09-28T16:41:06+03:00 | Accel-PPP
+ Д-2026-010877 | 2026-09-12T20:30:51+03:00 | MikroTik
+ Д-2025-006885 | 2026-09-12T10:27:22+03:00 | MikroTik
+ Д-2026-011556 | 2026-08-30T11:08:09+03:00 | MikroTik
+ Д-2026-011303 | 2026-08-27T17:57:53+03:00 | MikroTik
+ Д-2026-008773 | 2026-08-23T22:59:23+03:00 | Accel-PPP
+ Д-2025-006851 | 2026-08-20T11:25:21+03:00 | MikroTik
+ Д-2025-008065 | 2026-08-19T11:09:57+03:00 | MikroTik
+ Д-2026-010263 | 2026-08-18T07:07:38+03:00 | MikroTik
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=21966.15..21966.18 rows=10 width=104) (actual time=45.355..48.076 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=21966.15..21966.18 rows=10 width=104) (actual time=45.353..48.072 rows=10.00 loops=1)
+        Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=19923
+        ->  Gather  (cost=1000.00..21965.99 rows=10 width=104) (actual time=0.836..48.028 rows=51.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=19923
+              ->  Parallel Seq Scan on session_record  (cost=0.00..20964.99 rows=4 width=104) (actual time=0.159..13.984 rows=17.00 loops=3)
+                    Filter: (((doc -> 'attributes'::text) ?| '{address_list,redirect_url}'::text[]) AND (doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', 'ДонНет')))))
+                    Rows Removed by Filter: 33325
+                    Buffers: shared hit=19923
+Planning Time: 0.177 ms
+Execution Time: 48.101 ms
+
+-- План «после»: с индексами, второй прогон
+Limit  (cost=60.75..60.76 rows=1 width=104) (actual time=0.572..0.573 rows=10.00 loops=1)
+  Buffers: shared hit=64
+  ->  Sort  (cost=60.75..60.76 rows=1 width=104) (actual time=0.571..0.572 rows=10.00 loops=1)
+        Sort Key: (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone) DESC
+        Sort Method: top-N heapsort  Memory: 27kB
+        Buffers: shared hit=64
+        ->  Bitmap Heap Scan on session_record  (cost=56.70..60.74 rows=1 width=104) (actual time=0.406..0.563 rows=51.00 loops=1)
+              Recheck Cond: ((doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', 'ДонНет')))) AND ((doc -> 'attributes'::text) ?| '{address_list,redirect_url}'::text[]))
+              Heap Blocks: exact=51
+              Buffers: shared hit=64
+              ->  BitmapAnd  (cost=56.70..56.70 rows=1 width=0) (actual time=0.389..0.390 rows=0.00 loops=1)
+                    Buffers: shared hit=13
+                    ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..26.37 rows=1000 width=0) (actual time=0.202..0.202 rows=3460.00 loops=1)
+                          Index Cond: (doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', 'ДонНет'))))
+                          Index Searches: 1
+                          Buffers: shared hit=5
+                    ->  Bitmap Index Scan on ix_session_record_attributes  (cost=0.00..30.09 rows=10 width=0) (actual time=0.136..0.136 rows=1509.00 loops=1)
+                          Index Cond: ((doc -> 'attributes'::text) ?| '{address_list,redirect_url}'::text[])
+                          Index Searches: 1
+                          Buffers: shared hit=8
+Planning:
+  Buffers: shared hit=2
+Planning Time: 0.091 ms
+Execution Time: 0.615 ms
+
+-- Сравнение узлов: «после» (с индексами) и «до» (без индексов)
+| Узел «после» | cost | время, мс | Узел «до» | cost | время, мс | Стоимость не выросла |
+|---|---|---|---|---|---|---|
+| Limit | 60.76 | 0.573 × 1 | Limit | 21966.18 | 48.076 × 1 | да |
+| · Sort | 60.76 | 0.572 × 1 | Sort | 21966.18 | 48.072 × 1 | да |
+| · · Bitmap Heap Scan on session_record | 60.74 | 0.563 × 1 | Parallel Seq Scan on session_record | 20964.99 | 13.984 × 3 | да |
+| · · · BitmapAnd | 56.70 | 0.390 × 1 | — | | | входит в узел выше |
+| · · · · Bitmap Index Scan on ix_session_record_doc | 26.37 | 0.202 × 1 | — | | | входит в узел выше |
+| · · · · Bitmap Index Scan on ix_session_record_attributes | 30.09 | 0.136 × 1 | — | | | входит в узел выше |
+
+Узлы «до», которым нет пары «после» (исчезли из плана): Gather (cost 21965.99)
+
+Итог: стоимость верхнего узла 21 966.18 → 60.76; время выполнения 48.101 → 0.615 мс; индексы в плане «после»: ix_session_record_attributes, ix_session_record_doc

@@ -1,0 +1,128 @@
+Запрос 5.6_nas_summary (05_functions.sql)
+Раздел задания: Функции: jsonb_build_object, jsonb_object_agg, jsonb_agg, jsonb_pretty
+Зачем: Сводка за месяц по узлам доступа провайдера одним JSON-документом для системы мониторинга: сеансы, трафик по направлениям, причины завершения
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL
+WITH c AS (
+    SELECT doc #>> '{source,nas,name}'     AS nas,
+           doc #>> '{source,nas,vendor}'   AS vendor,
+           doc #>> '{session,stop_cause}'  AS cause,
+           count(*)                        AS sessions,
+           sum((doc #>> '{session,traffic,in,mb}')::numeric)  AS in_mb,
+           sum((doc #>> '{session,traffic,out,mb}')::numeric) AS out_mb
+    FROM lab7.session_record
+    WHERE doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', :'q_provider')))
+      AND (doc #>> '{session,started_at}')::timestamptz >= :'q_from'
+      AND (doc #>> '{session,started_at}')::timestamptz <  :'q_to'
+    GROUP BY 1, 2, 3),
+n AS (
+    SELECT c.nas,
+           jsonb_build_object('nas', c.nas, 'vendor', c.vendor, 'sessions', sum(c.sessions),
+                              'traffic_mb', jsonb_build_object('in', sum(c.in_mb), 'out', sum(c.out_mb)),
+                              'stop_causes', jsonb_object_agg(c.cause, c.sessions)) AS item
+    FROM c
+    GROUP BY c.nas, c.vendor)
+SELECT jsonb_pretty(jsonb_build_object('provider', :'q_provider', 'from', :'q_from', 'to', :'q_to',
+                                       'nodes', jsonb_agg(n.item ORDER BY n.nas))) AS summary
+FROM n;
+
+-- Результат (первые строки)
+               summary               
+-------------------------------------
+ {                                  +
+     "to": "2026-10-01",            +
+     "from": "2026-09-01",          +
+     "nodes": [                     +
+         {                          +
+             "nas": "bras01-1",     +
+             "vendor": "Accel-PPP", +
+             "sessions": 188,       +
+             "traffic_mb": {        +
+                 "in": 77282.063,   +
+                 "out": 15400.114   +
+             },                     +
+             "stop_causes": {       +
+                 "nas_reboot": 1,   +
+                 "port_error": 12,  +
+                 "admin_reset": 7,  +
+                 "idle_timeout": 31,+
+                 "lost_carrier": 32,+
+                 "user_request": 105+
+             }                      +
+         },                         +
+         {                          +
+             "nas": "bras01-2",     +
+             "vendor": "MikroTik",  +
+             "sessions": 208,       +
+             "traffic_mb": {        +
+                 "in": 96389.659,   +
+                 "out": 18298.323   +
+             },                     +
+             "stop_causes": {       +
+                 "nas_reboot": 6,   +
+                 "port_error": 10,  +
+                 "admin_reset": 14, +
+                 "idle_timeout": 36,+
+                 "lost_carrier": 37,+
+                 "user_request": 105+
+             }                      +
+         }                          +
+… (показаны первые 40 строк вывода из 43)
+
+-- План «до»: без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Aggregate  (cost=22591.25..22591.26 rows=1 width=32) (actual time=73.808..78.677 rows=1.00 loops=1)
+  Buffers: shared hit=19923
+  ->  GroupAggregate  (cost=22590.66..22591.18 rows=5 width=96) (actual time=73.636..78.657 rows=2.00 loops=1)
+        Group Key: ((session_record.doc #>> '{source,nas,name}'::text[])), ((session_record.doc #>> '{source,nas,vendor}'::text[]))
+        Buffers: shared hit=19923
+        ->  GroupAggregate  (cost=22590.66..22590.93 rows=5 width=168) (actual time=73.471..78.626 rows=12.00 loops=1)
+              Group Key: ((session_record.doc #>> '{source,nas,name}'::text[])), ((session_record.doc #>> '{source,nas,vendor}'::text[])), ((session_record.doc #>> '{session,stop_cause}'::text[]))
+              Buffers: shared hit=19923
+              ->  Sort  (cost=22590.66..22590.67 rows=5 width=1518) (actual time=73.452..78.330 rows=396.00 loops=1)
+                    Sort Key: ((session_record.doc #>> '{source,nas,name}'::text[])), ((session_record.doc #>> '{source,nas,vendor}'::text[])), ((session_record.doc #>> '{session,stop_cause}'::text[]))
+                    Sort Method: quicksort  Memory: 605kB
+                    Buffers: shared hit=19923
+                    ->  Gather  (cost=1000.00..22590.60 rows=5 width=1518) (actual time=53.402..77.965 rows=396.00 loops=1)
+                          Workers Planned: 2
+                          Workers Launched: 2
+                          Buffers: shared hit=19923
+                          ->  Parallel Seq Scan on session_record  (cost=0.00..21590.10 rows=2 width=1518) (actual time=31.906..50.732 rows=132.00 loops=3)
+                                Filter: ((doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', 'ДонНет')))) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-09-01 00:00:00+03'::timestamp with time zone) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone < '2026-10-01 00:00:00+03'::timestamp with time zone))
+                                Rows Removed by Filter: 33210
+                                Buffers: shared hit=19923
+Planning Time: 0.145 ms
+Execution Time: 78.790 ms
+
+-- План «после»: с индексами, второй прогон
+Aggregate  (cost=3322.99..3323.00 rows=1 width=32) (actual time=12.644..12.645 rows=1.00 loops=1)
+  Buffers: shared hit=1806
+  ->  GroupAggregate  (cost=3322.40..3322.92 rows=5 width=96) (actual time=12.456..12.628 rows=2.00 loops=1)
+        Group Key: ((session_record.doc #>> '{source,nas,name}'::text[])), ((session_record.doc #>> '{source,nas,vendor}'::text[]))
+        Buffers: shared hit=1806
+        ->  GroupAggregate  (cost=3322.40..3322.67 rows=5 width=168) (actual time=12.285..12.598 rows=12.00 loops=1)
+              Group Key: ((session_record.doc #>> '{source,nas,name}'::text[])), ((session_record.doc #>> '{source,nas,vendor}'::text[])), ((session_record.doc #>> '{session,stop_cause}'::text[]))
+              Buffers: shared hit=1806
+              ->  Sort  (cost=3322.40..3322.41 rows=5 width=1518) (actual time=12.260..12.271 rows=396.00 loops=1)
+                    Sort Key: ((session_record.doc #>> '{source,nas,name}'::text[])), ((session_record.doc #>> '{source,nas,vendor}'::text[])), ((session_record.doc #>> '{session,stop_cause}'::text[]))
+                    Sort Method: quicksort  Memory: 605kB
+                    Buffers: shared hit=1806
+                    ->  Bitmap Heap Scan on session_record  (cost=26.37..3322.34 rows=5 width=1518) (actual time=3.131..11.945 rows=396.00 loops=1)
+                          Recheck Cond: (doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', 'ДонНет'))))
+                          Filter: ((((doc #>> '{session,started_at}'::text[]))::timestamp with time zone >= '2026-09-01 00:00:00+03'::timestamp with time zone) AND (((doc #>> '{session,started_at}'::text[]))::timestamp with time zone < '2026-10-01 00:00:00+03'::timestamp with time zone))
+                          Rows Removed by Filter: 3064
+                          Heap Blocks: exact=1801
+                          Buffers: shared hit=1806
+                          ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..26.37 rows=1000 width=0) (actual time=0.231..0.231 rows=3460.00 loops=1)
+                                Index Cond: (doc @> jsonb_build_object('source', jsonb_build_object('provider', jsonb_build_object('name', 'ДонНет'))))
+                                Index Searches: 1
+                                Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.225 ms
+Execution Time: 12.888 ms
+
+Итог: стоимость верхнего узла 22 591.26 → 3 323.00; время выполнения 78.790 → 12.888 мс; индексы в плане «после»: ix_session_record_doc

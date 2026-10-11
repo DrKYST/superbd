@@ -1,0 +1,110 @@
+Запрос 9.2_nas_reboot (09_optimize.sql)
+Раздел задания: jsonb_path_exists с переменной → оператор @? с константой (GIN jsonb_path_ops)
+Зачем: Инженер считает сеансы, оборванные перезагрузкой узлов (запрос 4.2): функция jsonb_path_exists индексом не пользуется, оператор @? — пользуется
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2, random_page_cost = 4
+Таблица lab7.session_record: 100025 документов, 156 MB (индексы 94 MB); снято 12.10.2026 00:39
+Параметры: провайдер ДонНет , договор Д-2024-000050 , сеанс 84AB7736 , месяц 2026-09-01 – 2026-10-01
+
+-- SQL: исходная форма («до»)
+SELECT doc #>> '{source,nas,name}' AS nas, count(*) AS sessions
+FROM lab7.session_record
+WHERE jsonb_path_exists(doc, '$.events[*] ? (@.type == "stop" && @.cause == $cause)', '{"cause": "nas_reboot"}')
+GROUP BY 1
+ORDER BY 2 DESC, 1
+LIMIT 10;
+
+-- SQL: оптимизированная форма («после»)
+SELECT doc #>> '{source,nas,name}' AS nas, count(*) AS sessions
+FROM lab7.session_record
+WHERE doc @? '$.events[*] ? (@.type == "stop" && @.cause == "nas_reboot")'
+GROUP BY 1
+ORDER BY 2 DESC, 1
+LIMIT 10;
+
+-- Результат (первые строки)
+   nas    | sessions 
+----------+----------
+ bras06-1 |      118
+ bras09-1 |      116
+ bras21-1 |      116
+ bras27-1 |      102
+ bras18-1 |      101
+ bras24-1 |      101
+ bras30-1 |      101
+ bras12-1 |       99
+ bras03-1 |       96
+ bras15-1 |       88
+
+Результаты исходной и оптимизированной форм совпадают: да
+
+-- План «до»: исходная форма, без индексов (DROP INDEX в транзакции с откатом), второй прогон
+Limit  (cost=22560.66..22560.69 rows=10 width=40) (actual time=68.435..68.437 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=22560.66..22644.02 rows=33342 width=40) (actual time=68.434..68.435 rows=10.00 loops=1)
+        Sort Key: (count(*)) DESC, ((doc #>> '{source,nas,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=19923
+        ->  HashAggregate  (cost=21423.38..21840.15 rows=33342 width=40) (actual time=68.307..68.407 rows=60.00 loops=1)
+              Group Key: (doc #>> '{source,nas,name}'::text[])
+              Batches: 1  Memory Usage: 1057kB
+              Buffers: shared hit=19923
+              ->  Seq Scan on session_record  (cost=0.00..21256.67 rows=33342 width=32) (actual time=0.053..67.471 rows=3038.00 loops=1)
+                    Filter: jsonb_path_exists(doc, '$."events"[*]?(@."type" == "stop" && @."cause" == $"cause")'::jsonpath, '{"cause": "nas_reboot"}'::jsonb, false)
+                    Rows Removed by Filter: 96987
+                    Buffers: shared hit=19923
+Planning Time: 0.100 ms
+Execution Time: 68.865 ms
+
+-- План исходной формы при наличии индексов (применим ли индекс без переписывания)
+Limit  (cost=22560.66..22560.69 rows=10 width=40) (actual time=61.847..61.848 rows=10.00 loops=1)
+  Buffers: shared hit=19923
+  ->  Sort  (cost=22560.66..22644.02 rows=33342 width=40) (actual time=61.846..61.846 rows=10.00 loops=1)
+        Sort Key: (count(*)) DESC, ((doc #>> '{source,nas,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=19923
+        ->  HashAggregate  (cost=21423.38..21840.15 rows=33342 width=40) (actual time=61.681..61.820 rows=60.00 loops=1)
+              Group Key: (doc #>> '{source,nas,name}'::text[])
+              Batches: 1  Memory Usage: 1057kB
+              Buffers: shared hit=19923
+              ->  Seq Scan on session_record  (cost=0.00..21256.67 rows=33342 width=32) (actual time=0.036..61.094 rows=3038.00 loops=1)
+                    Filter: jsonb_path_exists(doc, '$."events"[*]?(@."type" == "stop" && @."cause" == $"cause")'::jsonpath, '{"cause": "nas_reboot"}'::jsonb, false)
+                    Rows Removed by Filter: 96987
+                    Buffers: shared hit=19923
+Planning Time: 0.143 ms
+Execution Time: 62.156 ms
+
+-- План «после»: оптимизированная форма, с индексами, второй прогон
+Limit  (cost=3353.89..3353.91 rows=10 width=40) (actual time=4.638..4.639 rows=10.00 loops=1)
+  Buffers: shared hit=2897
+  ->  Sort  (cost=3353.89..3356.39 rows=1000 width=40) (actual time=4.637..4.638 rows=10.00 loops=1)
+        Sort Key: (count(*)) DESC, ((doc #>> '{source,nas,name}'::text[]))
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=2897
+        ->  HashAggregate  (cost=3319.78..3332.28 rows=1000 width=40) (actual time=4.610..4.617 rows=60.00 loops=1)
+              Group Key: (doc #>> '{source,nas,name}'::text[])
+              Batches: 1  Memory Usage: 65kB
+              Buffers: shared hit=2897
+              ->  Bitmap Heap Scan on session_record  (cost=43.84..3314.78 rows=1000 width=32) (actual time=0.871..4.290 rows=3038.00 loops=1)
+                    Recheck Cond: (doc @? '$."events"[*]?(@."type" == "stop" && @."cause" == "nas_reboot")'::jsonpath)
+                    Heap Blocks: exact=2858
+                    Buffers: shared hit=2897
+                    ->  Bitmap Index Scan on ix_session_record_doc  (cost=0.00..43.59 rows=1000 width=0) (actual time=0.666..0.666 rows=3038.00 loops=1)
+                          Index Cond: (doc @? '$."events"[*]?(@."type" == "stop" && @."cause" == "nas_reboot")'::jsonpath)
+                          Index Searches: 1
+                          Buffers: shared hit=39
+Planning:
+  Buffers: shared hit=1
+Planning Time: 0.131 ms
+Execution Time: 4.742 ms
+
+-- Сравнение узлов: «после» (с индексами) и «до» (без индексов)
+| Узел «после» | cost | время, мс | Узел «до» | cost | время, мс | Стоимость не выросла |
+|---|---|---|---|---|---|---|
+| Limit | 3353.91 | 4.639 × 1 | Limit | 22560.69 | 68.437 × 1 | да |
+| · Sort | 3356.39 | 4.638 × 1 | Sort | 22644.02 | 68.435 × 1 | да |
+| · · HashAggregate | 3332.28 | 4.617 × 1 | HashAggregate | 21840.15 | 68.407 × 1 | да |
+| · · · Bitmap Heap Scan on session_record | 3314.78 | 4.290 × 1 | Seq Scan on session_record | 21256.67 | 67.471 × 1 | да |
+| · · · · Bitmap Index Scan on ix_session_record_doc | 43.59 | 0.666 × 1 | — | | | входит в узел выше |
+
+Итог: стоимость верхнего узла 22 560.69 → 3 353.91; время выполнения 68.865 → 4.742 мс; индексы в плане «после»: ix_session_record_doc
