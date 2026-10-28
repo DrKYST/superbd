@@ -1,0 +1,103 @@
+Сравнение 3.9_idle_rewritten (03_compare.sql)
+Что показывает: запрос под секции: условие на время вместо max — отсечение при выполнении
+Запрос: Тот же отбор, переписанный: «нет сеанса после границы» (NOT EXISTS с started_at ≥ граница) — читаются только секции после границы; результат тот же
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+SELECT count(*) AS idle_contracts
+FROM core.contract c
+WHERE c.provider_id = :q_provider AND c.closed_on IS NULL AND c.connected_on < current_date - 30
+  AND NOT EXISTS (SELECT 1 FROM core.session se
+                  WHERE se.contract_id = c.id AND se.provider_id = c.provider_id
+                    AND se.started_at >= (current_date - 30)::timestamptz);
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+SELECT count(*) AS idle_contracts
+FROM lab8.contract_plain c
+WHERE c.provider_id = :q_provider AND c.closed_on IS NULL AND c.connected_on < current_date - 30
+  AND NOT EXISTS (SELECT 1 FROM lab8.session_plain se
+                  WHERE se.contract_id = c.id AND se.provider_id = c.provider_id
+                    AND se.started_at >= (current_date - 30)::timestamptz);
+
+-- Результат (секционированные таблицы)
+ idle_contracts 
+----------------
+             18
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+Aggregate  (cost=983.57..983.58 rows=1 width=8) (actual time=1.457..1.460 rows=1.00 loops=1)
+  Buffers: shared hit=279
+  ->  Hash Right Anti Join  (cost=20.03..982.75 rows=329 width=0) (actual time=1.448..1.455 rows=18.00 loops=1)
+        Hash Cond: (se.contract_id = c.id)
+        Buffers: shared hit=279
+        ->  Append  (cost=0.29..959.21 rows=1019 width=8) (actual time=0.015..1.295 rows=1007.00 loops=1)
+              Buffers: shared hit=272
+              Subplans Removed: 10
+              ->  Index Scan using session_2026_q3_started_at_idx on session_2026_q3 se_1  (cost=0.30..118.41 rows=98 width=8) (actual time=0.014..0.198 rows=101.00 loops=1)
+                    Index Cond: (started_at >= ((CURRENT_DATE - 30))::timestamp with time zone)
+                    Filter: (provider_id = 1)
+                    Rows Removed by Filter: 2710
+                    Index Searches: 1
+                    Buffers: shared hit=38
+              ->  Seq Scan on session_2026_q4 se_2  (cost=0.00..791.54 rows=906 width=8) (actual time=0.009..1.025 rows=906.00 loops=1)
+                    Filter: ((provider_id = 1) AND (started_at >= ((CURRENT_DATE - 30))::timestamp with time zone))
+                    Rows Removed by Filter: 23918
+                    Buffers: shared hit=233
+              ->  Seq Scan on session_2027_q1 se_3  (cost=0.00..0.00 rows=1 width=8) (actual time=0.015..0.015 rows=0.00 loops=1)
+                    Filter: ((provider_id = 1) AND (started_at >= ((CURRENT_DATE - 30))::timestamp with time zone))
+              ->  Seq Scan on session_2027_q2 se_4  (cost=0.00..0.00 rows=1 width=8) (actual time=0.004..0.004 rows=0.00 loops=1)
+                    Filter: ((provider_id = 1) AND (started_at >= ((CURRENT_DATE - 30))::timestamp with time zone))
+              ->  Seq Scan on session_2027_q3 se_5  (cost=0.00..0.00 rows=1 width=8) (actual time=0.005..0.005 rows=0.00 loops=1)
+                    Filter: ((provider_id = 1) AND (started_at >= ((CURRENT_DATE - 30))::timestamp with time zone))
+              ->  Seq Scan on session_2027_q4 se_6  (cost=0.00..0.00 rows=1 width=8) (actual time=0.005..0.005 rows=0.00 loops=1)
+                    Filter: ((provider_id = 1) AND (started_at >= ((CURRENT_DATE - 30))::timestamp with time zone))
+              ->  Seq Scan on session_default se_7  (cost=0.00..1.00 rows=1 width=8) (actual time=0.008..0.008 rows=0.00 loops=1)
+                    Filter: ((provider_id = 1) AND (started_at >= ((CURRENT_DATE - 30))::timestamp with time zone))
+                    Buffers: shared hit=1
+        ->  Hash  (cost=15.18..15.18 rows=365 width=8) (actual time=0.083..0.083 rows=365.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 23kB
+              Buffers: shared hit=7
+              ->  Seq Scan on contract_p1 c  (cost=0.00..15.18 rows=365 width=8) (actual time=0.015..0.064 rows=365.00 loops=1)
+                    Filter: ((closed_on IS NULL) AND (provider_id = 1) AND (connected_on < (CURRENT_DATE - 30)))
+                    Rows Removed by Filter: 44
+                    Buffers: shared hit=7
+Planning:
+  Buffers: shared hit=49
+Planning Time: 1.001 ms
+Execution Time: 1.509 ms
+
+-- План: обычные копии, второй прогон
+Aggregate  (cost=1367.47..1367.48 rows=1 width=8) (actual time=1.976..1.978 rows=1.00 loops=1)
+  Buffers: shared hit=509
+  ->  Hash Right Anti Join  (cost=230.17..1366.65 rows=329 width=0) (actual time=1.966..1.972 rows=18.00 loops=1)
+        Hash Cond: (se.contract_id = c.id)
+        Buffers: shared hit=509
+        ->  Index Scan using ix_session_plain_started_at on session_plain se  (cost=0.43..1133.53 rows=959 width=8) (actual time=0.013..1.695 rows=1007.00 loops=1)
+              Index Cond: (started_at >= ((CURRENT_DATE - 30))::timestamp with time zone)
+              Filter: (provider_id = 1)
+              Rows Removed by Filter: 26628
+              Index Searches: 1
+              Buffers: shared hit=339
+        ->  Hash  (cost=225.27..225.27 rows=358 width=8) (actual time=0.199..0.199 rows=365.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 23kB
+              Buffers: shared hit=170
+              ->  Bitmap Heap Scan on contract_plain c  (cost=12.35..225.27 rows=358 width=8) (actual time=0.031..0.181 rows=365.00 loops=1)
+                    Recheck Cond: ((provider_id = 1) AND (connected_on < (CURRENT_DATE - 30)))
+                    Filter: (closed_on IS NULL)
+                    Rows Removed by Filter: 34
+                    Heap Blocks: exact=167
+                    Buffers: shared hit=170
+                    ->  Bitmap Index Scan on ix_contract_plain_provider_id_connected_on  (cost=0.00..12.26 rows=397 width=0) (actual time=0.017..0.017 rows=399.00 loops=1)
+                          Index Cond: ((provider_id = 1) AND (connected_on < (CURRENT_DATE - 30)))
+                          Index Searches: 1
+                          Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=14
+Planning Time: 0.204 ms
+Execution Time: 2.000 ms
+
+Итог: секции — прочитано 8 (contract_p1, session_2026_q3, session_2026_q4, session_2027_q1, session_2027_q2, session_2027_q3, session_2027_q4, session_default), исключено при запуске 10, cost 983.58, 1.509 мс; копия — contract_plain, ix_contract_plain_provider_id_connected_on, session_plain, cost 1 367.48, 2.000 мс

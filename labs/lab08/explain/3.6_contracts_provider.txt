@@ -1,0 +1,49 @@
+Сравнение 3.6_contracts_provider (03_compare.sql)
+Что показывает: отсечение по списку: договоры провайдера
+Запрос: Договоры провайдера, заключённые в 2026 году (запрос 4 ЛР 5, api.q_contracts): читается только секция провайдера
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+SELECT count(*) AS contracts, sum(c.connection_fee) AS fees
+FROM core.contract c
+WHERE c.provider_id = :q_provider AND c.connected_on >= '2026-01-01';
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+SELECT count(*) AS contracts, sum(c.connection_fee) AS fees
+FROM lab8.contract_plain c
+WHERE c.provider_id = :q_provider AND c.connected_on >= '2026-01-01';
+
+-- Результат (секционированные таблицы)
+ contracts |   fees   
+-----------+----------
+       110 | 81450.00
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+Aggregate  (cost=13.69..13.70 rows=1 width=40) (actual time=0.030..0.030 rows=1.00 loops=1)
+  Buffers: shared hit=7
+  ->  Seq Scan on contract_p1 c  (cost=0.00..13.13 rows=110 width=4) (actual time=0.016..0.023 rows=110.00 loops=1)
+        Filter: ((connected_on >= '2026-01-01'::date) AND (provider_id = 1))
+        Rows Removed by Filter: 299
+        Buffers: shared hit=7
+Planning Time: 0.054 ms
+Execution Time: 0.036 ms
+
+-- План: обычные копии, второй прогон
+Aggregate  (cost=191.51..191.52 rows=1 width=40) (actual time=0.036..0.036 rows=1.00 loops=1)
+  Buffers: shared hit=51
+  ->  Bitmap Heap Scan on contract_plain c  (cost=5.50..190.91 rows=119 width=4) (actual time=0.011..0.026 rows=110.00 loops=1)
+        Recheck Cond: ((provider_id = 1) AND (connected_on >= '2026-01-01'::date))
+        Heap Blocks: exact=48
+        Buffers: shared hit=51
+        ->  Bitmap Index Scan on ix_contract_plain_provider_id_connected_on  (cost=0.00..5.47 rows=119 width=0) (actual time=0.006..0.006 rows=110.00 loops=1)
+              Index Cond: ((provider_id = 1) AND (connected_on >= '2026-01-01'::date))
+              Index Searches: 1
+              Buffers: shared hit=3
+Planning Time: 0.034 ms
+Execution Time: 0.043 ms
+
+Итог: секции — прочитано 1 (contract_p1), cost 13.70, 0.036 мс; копия — contract_plain, ix_contract_plain_provider_id_connected_on, cost 191.52, 0.043 мс

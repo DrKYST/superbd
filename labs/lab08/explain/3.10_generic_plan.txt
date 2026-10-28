@@ -1,0 +1,51 @@
+Сравнение 3.10_generic_plan (03_compare.sql)
+Что показывает: отсечение при выполнении: общий план с параметрами
+Запрос: Функции api с параметрами периода (plpgsql готовит запрос с параметрами): общий план строится без значений, лишние секции исключаются при запуске (Subplans Removed)
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- Подготовка
+PREPARE q_part (timestamptz, timestamptz) AS
+    SELECT count(*) AS sessions, sum(cost) AS cost FROM core.session WHERE started_at >= $1 AND started_at < $2;
+PREPARE q_plain (timestamptz, timestamptz) AS
+    SELECT count(*) AS sessions, sum(cost) AS cost FROM lab8.session_plain WHERE started_at >= $1 AND started_at < $2;
+SET plan_cache_mode = force_generic_plan;
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+EXECUTE q_part('2026-07-01', '2026-10-01');
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+EXECUTE q_plain('2026-07-01', '2026-10-01');
+
+-- Результат (секционированные таблицы)
+ sessions |    cost    
+----------+------------
+    80577 | 3454098.59
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+Aggregate  (cost=201.62..201.63 rows=1 width=40) (actual time=12.316..12.316 rows=1.00 loops=1)
+  Buffers: shared hit=977
+  ->  Append  (cost=0.28..189.09 rows=2505 width=6) (actual time=0.014..8.823 rows=80577.00 loops=1)
+        Buffers: shared hit=977
+        Subplans Removed: 16
+        ->  Index Scan using session_2026_q3_started_at_idx on session_2026_q3 session_1  (cost=0.29..23.45 rows=403 width=6) (actual time=0.014..6.297 rows=80577.00 loops=1)
+              Index Cond: ((started_at >= $1) AND (started_at < $2))
+              Index Searches: 1
+              Buffers: shared hit=977
+Planning Time: 0.018 ms
+Execution Time: 12.349 ms
+
+-- План: обычные копии, второй прогон
+Aggregate  (cost=117.92..117.94 rows=1 width=40) (actual time=9.673..9.673 rows=1.00 loops=1)
+  Buffers: shared hit=978
+  ->  Index Scan using ix_session_plain_started_at on session_plain  (cost=0.42..105.42 rows=2500 width=6) (actual time=0.014..4.434 rows=80577.00 loops=1)
+        Index Cond: ((started_at >= $1) AND (started_at < $2))
+        Index Searches: 1
+        Buffers: shared hit=978
+Planning Time: 0.011 ms
+Execution Time: 9.691 ms
+
+Итог: секции — прочитано 1 (session_2026_q3), исключено при запуске 16, cost 201.63, 12.349 мс; копия — session_plain, cost 117.94, 9.691 мс

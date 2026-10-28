@@ -1,0 +1,135 @@
+Сравнение 3.8_idle_contracts (03_compare.sql)
+Что показывает: отсечения по времени нет: последний сеанс договора
+Запрос: «Договоры без сеансов более 30 дней» (запрос 14 ЛР 6, api.q_idle_contracts): max(started_at) по договору ищется во всех секциях
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+SELECT count(*) AS idle_contracts
+FROM (SELECT c.id
+      FROM core.contract c
+      LEFT JOIN core.session se ON se.contract_id = c.id
+      WHERE c.provider_id = :q_provider AND c.closed_on IS NULL AND c.connected_on < current_date - 30
+      GROUP BY c.id, c.provider_id
+      HAVING max(se.started_at) IS NULL OR max(se.started_at) < (current_date - 30)::timestamptz) x;
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+SELECT count(*) AS idle_contracts
+FROM (SELECT c.id
+      FROM lab8.contract_plain c
+      LEFT JOIN lab8.session_plain se ON se.contract_id = c.id
+      WHERE c.provider_id = :q_provider AND c.closed_on IS NULL AND c.connected_on < current_date - 30
+      GROUP BY c.id, c.provider_id
+      HAVING max(se.started_at) IS NULL OR max(se.started_at) < (current_date - 30)::timestamptz) x;
+
+-- Результат (секционированные таблицы)
+ idle_contracts 
+----------------
+             18
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+Aggregate  (cost=10397.18..10397.19 rows=1 width=8) (actual time=56.030..58.476 rows=1.00 loops=1)
+  Buffers: shared hit=4702
+  ->  Finalize GroupAggregate  (cost=10281.94..10395.64 rows=123 width=8) (actual time=55.914..58.474 rows=18.00 loops=1)
+        Group Key: c.id
+        Filter: ((max(se.started_at) IS NULL) OR (max(se.started_at) < ((CURRENT_DATE - 30))::timestamp with time zone))
+        Rows Removed by Filter: 347
+        Buffers: shared hit=4702
+        ->  Gather Merge  (cost=10281.94..10383.96 rows=876 width=16) (actual time=55.900..58.406 rows=725.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=4702
+              ->  Sort  (cost=9281.92..9282.83 rows=365 width=16) (actual time=22.747..22.756 rows=241.67 loops=3)
+                    Sort Key: c.id
+                    Sort Method: quicksort  Memory: 36kB
+                    Buffers: shared hit=4702
+                    Worker 0:  Sort Method: quicksort  Memory: 36kB
+                    Worker 1:  Sort Method: quicksort  Memory: 25kB
+                    ->  Partial HashAggregate  (cost=9262.73..9266.38 rows=365 width=16) (actual time=22.688..22.704 rows=241.67 loops=3)
+                          Group Key: c.id
+                          Batches: 1  Memory Usage: 56kB
+                          Buffers: shared hit=4688
+                          Worker 0:  Batches: 1  Memory Usage: 56kB
+                          Worker 1:  Batches: 1  Memory Usage: 48kB
+                          ->  Parallel Hash Right Join  (cost=14.50..9225.69 rows=7408 width=16) (actual time=0.227..22.171 rows=5463.67 loops=3)
+                                Hash Cond: (se.contract_id = c.id)
+                                Buffers: shared hit=4688
+                                ->  Parallel Append  (cost=0.00..8664.05 rows=208349 width=12) (actual time=0.248..21.122 rows=250012.50 loops=2)
+                                      Buffers: shared hit=4681
+                                      ->  Seq Scan on session_default se_17  (cost=0.00..1.00 rows=1 width=12) (actual time=0.399..0.399 rows=0.00 loops=1)
+                                            Buffers: shared hit=1
+                                      ->  Seq Scan on session_2027_q1 se_13  (cost=0.00..0.00 rows=1 width=12) (actual time=0.025..0.025 rows=0.00 loops=1)
+                                      ->  Seq Scan on session_2027_q2 se_14  (cost=0.00..0.00 rows=1 width=12) (actual time=0.018..0.018 rows=0.00 loops=1)
+                                      ->  Seq Scan on session_2027_q3 se_15  (cost=0.00..0.00 rows=1 width=12) (actual time=0.019..0.019 rows=0.00 loops=1)
+                                      ->  Seq Scan on session_2027_q4 se_16  (cost=0.00..0.00 rows=1 width=12) (actual time=0.019..0.019 rows=0.00 loops=1)
+                                      ->  Parallel Seq Scan on session_2026_q3 se_11  (cost=0.00..1227.98 rows=47398 width=12) (actual time=0.008..5.686 rows=80577.00 loops=1)
+                                            Buffers: shared hit=754
+                                      ->  Parallel Seq Scan on session_2026_q2 se_10  (cost=0.00..1112.88 rows=42988 width=12) (actual time=0.007..1.916 rows=36540.00 loops=2)
+                                            Buffers: shared hit=683
+                                      ->  Parallel Seq Scan on session_2026_q1 se_9  (cost=0.00..1006.92 rows=38892 width=12) (actual time=0.004..3.212 rows=66117.00 loops=1)
+                                            Buffers: shared hit=618
+                                      ->  Parallel Seq Scan on session_2025_q4 se_8  (cost=0.00..915.29 rows=35329 width=12) (actual time=0.003..2.792 rows=60060.00 loops=1)
+                                            Buffers: shared hit=562
+                                      ->  Parallel Seq Scan on session_2025_q3 se_7  (cost=0.00..793.28 rows=30628 width=12) (actual time=0.003..2.357 rows=52067.00 loops=1)
+                                            Buffers: shared hit=487
+                                      ->  Parallel Seq Scan on session_2025_q2 se_6  (cost=0.00..660.92 rows=25492 width=12) (actual time=0.004..1.965 rows=43337.00 loops=1)
+                                            Buffers: shared hit=406
+                                      ->  Parallel Seq Scan on session_2025_q1 se_5  (cost=0.00..540.37 rows=20837 width=12) (actual time=0.002..1.624 rows=35423.00 loops=1)
+                                            Buffers: shared hit=332
+                                      ->  Parallel Seq Scan on session_2024_q4 se_4  (cost=0.00..433.32 rows=16732 width=12) (actual time=0.002..1.258 rows=28444.00 loops=1)
+                                            Buffers: shared hit=266
+                                      ->  Parallel Seq Scan on session_2026_q4 se_12  (cost=0.00..379.02 rows=14602 width=12) (actual time=0.005..1.177 rows=24824.00 loops=1)
+                                            Buffers: shared hit=233
+                                      ->  Parallel Seq Scan on session_2024_q3 se_3  (cost=0.00..305.73 rows=11773 width=12) (actual time=0.005..0.943 rows=20014.00 loops=1)
+                                            Buffers: shared hit=188
+                                      ->  Parallel Seq Scan on session_2024_q2 se_2  (cost=0.00..182.24 rows=7024 width=12) (actual time=0.002..0.586 rows=11941.00 loops=1)
+                                            Buffers: shared hit=112
+                                      ->  Parallel Seq Scan on session_2024_q1 se_1  (cost=0.00..63.36 rows=2436 width=12) (actual time=0.004..0.189 rows=4141.00 loops=1)
+                                            Buffers: shared hit=39
+                                ->  Parallel Hash  (cost=11.81..11.81 rows=215 width=8) (actual time=0.036..0.036 rows=121.67 loops=3)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 40kB
+                                      Buffers: shared hit=7
+                                      ->  Parallel Seq Scan on contract_p1 c  (cost=0.00..11.81 rows=215 width=8) (actual time=0.009..0.056 rows=365.00 loops=1)
+                                            Filter: ((closed_on IS NULL) AND (provider_id = 1) AND (connected_on < (CURRENT_DATE - 30)))
+                                            Rows Removed by Filter: 44
+                                            Buffers: shared hit=7
+Planning:
+  Buffers: shared hit=16
+Planning Time: 0.625 ms
+Execution Time: 58.554 ms
+
+-- План: обычные копии, второй прогон
+Aggregate  (cost=2244.33..2244.34 rows=1 width=8) (actual time=3.399..3.400 rows=1.00 loops=1)
+  Buffers: shared hit=1332
+  ->  HashAggregate  (cost=2235.66..2242.82 rows=121 width=8) (actual time=3.379..3.398 rows=18.00 loops=1)
+        Group Key: c.id
+        Filter: ((max(se.started_at) IS NULL) OR (max(se.started_at) < ((CURRENT_DATE - 30))::timestamp with time zone))
+        Batches: 1  Memory Usage: 56kB
+        Rows Removed by Filter: 347
+        Buffers: shared hit=1332
+        ->  Nested Loop Left Join  (cost=12.77..2161.08 rows=14915 width=16) (actual time=0.030..2.268 rows=16391.00 loops=1)
+              Buffers: shared hit=1332
+              ->  Bitmap Heap Scan on contract_plain c  (cost=12.35..225.27 rows=358 width=8) (actual time=0.027..0.176 rows=365.00 loops=1)
+                    Recheck Cond: ((provider_id = 1) AND (connected_on < (CURRENT_DATE - 30)))
+                    Filter: (closed_on IS NULL)
+                    Rows Removed by Filter: 34
+                    Heap Blocks: exact=167
+                    Buffers: shared hit=170
+                    ->  Bitmap Index Scan on ix_contract_plain_provider_id_connected_on  (cost=0.00..12.26 rows=397 width=0) (actual time=0.015..0.015 rows=399.00 loops=1)
+                          Index Cond: ((provider_id = 1) AND (connected_on < (CURRENT_DATE - 30)))
+                          Index Searches: 1
+                          Buffers: shared hit=3
+              ->  Index Only Scan using ix_session_plain_contract_id_started_at on session_plain se  (cost=0.42..4.93 rows=48 width=12) (actual time=0.002..0.003 rows=44.91 loops=365)
+                    Index Cond: (contract_id = c.id)
+                    Heap Fetches: 0
+                    Index Searches: 365
+                    Buffers: shared hit=1162
+Planning:
+  Buffers: shared hit=14
+Planning Time: 0.144 ms
+Execution Time: 3.423 ms
+
+Итог: секции — прочитано 18 (contract_p1, session_2024_q1, session_2024_q2, session_2024_q3, session_2024_q4, session_2025_q1, session_2025_q2, session_2025_q3, session_2025_q4, session_2026_q1, session_2026_q2, session_2026_q3, session_2026_q4, session_2027_q1, session_2027_q2, session_2027_q3, session_2027_q4, session_default), cost 10 397.19, 58.554 мс; копия — contract_plain, ix_contract_plain_provider_id_connected_on, session_plain, cost 2 244.34, 3.423 мс

@@ -1,0 +1,8 @@
+-- Вывод labs/lab08/sql/01_copies.sql: Обычные копии для сравнения
+
+       table_name       |  rows  
+------------------------+--------
+ lab8.contract_plain    |  12002
+ core.contract (секции) |  12002
+ lab8.session_plain     | 500025
+ core.session (секции)  | 500025

@@ -10,7 +10,8 @@ DECLARE
 BEGIN
     SELECT count(*) INTO v_cnt
     FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind IN ('r', 'p') AND n.nspname IN ('ref', 'core', 'sec', 'audit');
+    -- секция — часть своей таблицы, а не отдельная таблица (D30)
+    WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition AND n.nspname IN ('ref', 'core', 'sec', 'audit');
     PERFORM pg_temp.check('1.1 в схемах ref, core, sec, audit ровно 10 таблиц', v_cnt = 10, v_cnt || ' шт.');
 
     SELECT string_agg(n.nspname || '.' || c.relname, ', ') INTO v_list
@@ -35,7 +36,7 @@ BEGIN
 
     SELECT string_agg(n.nspname || '.' || c.relname, ', ') INTO v_list
     FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind IN ('r', 'p') AND n.nspname IN ('ref', 'core', 'sec', 'audit')
+    WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition AND n.nspname IN ('ref', 'core', 'sec', 'audit')
       AND coalesce(obj_description(c.oid, 'pg_class'), '') = '';
     PERFORM pg_temp.check('1.4 у каждой таблицы есть комментарий', v_list IS NULL, v_list);
 
@@ -43,7 +44,7 @@ BEGIN
     FROM pg_catalog.pg_attribute a
     JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind IN ('r', 'p') AND n.nspname IN ('ref', 'core', 'sec', 'audit')
+    WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition AND n.nspname IN ('ref', 'core', 'sec', 'audit')
       AND a.attnum > 0 AND NOT a.attisdropped
       AND coalesce(col_description(c.oid, a.attnum), '') = '';
     PERFORM pg_temp.check('1.5 у каждой колонки есть комментарий', v_list IS NULL, v_list);
@@ -57,7 +58,8 @@ DECLARE
 BEGIN
     SELECT count(*) INTO v_cnt
     FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_namespace n ON n.oid = k.connamespace
-    WHERE k.contype = 'f' AND n.nspname IN ('ref', 'core', 'sec', 'audit');
+    -- conparentid = 0: ключи таблиц, без копий, которые PostgreSQL заводит для каждой секции (D30)
+    WHERE k.contype = 'f' AND k.conparentid = 0 AND n.nspname IN ('ref', 'core', 'sec', 'audit');
     PERFORM pg_temp.check('2.1 внешних ключей ровно 9', v_cnt = 9, v_cnt || ' шт.');
 
     WITH expected(child, col, parent, del) AS (VALUES
@@ -76,7 +78,7 @@ BEGIN
             FROM pg_catalog.pg_constraint k
             JOIN pg_catalog.pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
             JOIN pg_catalog.pg_namespace n ON n.oid = k.connamespace
-            WHERE k.contype = 'f' AND n.nspname IN ('ref', 'core', 'sec', 'audit'))
+            WHERE k.contype = 'f' AND k.conparentid = 0 AND n.nspname IN ('ref', 'core', 'sec', 'audit'))
     SELECT string_agg(x, '; ') INTO v_diff FROM (
         (SELECT 'нет ' || child || '.' || col || ' → ' || parent || ' (' || del || ')' AS x FROM expected
          EXCEPT SELECT 'нет ' || child || '.' || col || ' → ' || parent || ' (' || del || ')' FROM actual)
@@ -91,7 +93,7 @@ BEGIN
     FROM pg_catalog.pg_constraint k
     JOIN pg_catalog.pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
     JOIN pg_catalog.pg_namespace n ON n.oid = k.connamespace
-    WHERE k.contype = 'f' AND n.nspname IN ('ref', 'core', 'sec', 'audit')
+    WHERE k.contype = 'f' AND k.conparentid = 0 AND n.nspname IN ('ref', 'core', 'sec', 'audit')
       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_index i
                       WHERE i.indrelid = k.conrelid AND i.indkey[0] = k.conkey[1]);
     PERFORM pg_temp.check('2.3 у каждого внешнего ключа есть индекс', v_diff IS NULL, v_diff);

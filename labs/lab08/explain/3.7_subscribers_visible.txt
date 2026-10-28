@@ -1,0 +1,65 @@
+Сравнение 3.7_subscribers_visible (03_compare.sql)
+Что показывает: отсечение по списку в полусоединении
+Запрос: Абоненты, видимые оператору (D25, api.v_subscribers): у провайдера есть договор с абонентом — проверка только в секции своего провайдера
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+SELECT count(*) AS subscribers
+FROM core.subscriber s
+WHERE EXISTS (SELECT 1 FROM core.contract c WHERE c.subscriber_id = s.id AND c.provider_id = :q_provider);
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+SELECT count(*) AS subscribers
+FROM core.subscriber s
+WHERE EXISTS (SELECT 1 FROM lab8.contract_plain c WHERE c.subscriber_id = s.id AND c.provider_id = :q_provider);
+
+-- Результат (секционированные таблицы)
+ subscribers 
+-------------
+         289
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+Aggregate  (cost=265.75..265.76 rows=1 width=8) (actual time=0.653..0.654 rows=1.00 loops=1)
+  Buffers: shared hit=151
+  ->  Hash Semi Join  (cost=17.23..265.11 rows=259 width=0) (actual time=0.054..0.646 rows=289.00 loops=1)
+        Hash Cond: (s.id = c.subscriber_id)
+        Buffers: shared hit=151
+        ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=4) (actual time=0.004..0.286 rows=8000.00 loops=1)
+              Buffers: shared hit=144
+        ->  Hash  (cost=12.11..12.11 rows=409 width=4) (actual time=0.047..0.047 rows=409.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 23kB
+              Buffers: shared hit=7
+              ->  Seq Scan on contract_p1 c  (cost=0.00..12.11 rows=409 width=4) (actual time=0.004..0.028 rows=409.00 loops=1)
+                    Filter: (provider_id = 1)
+                    Buffers: shared hit=7
+Planning:
+  Buffers: shared hit=6
+Planning Time: 0.126 ms
+Execution Time: 0.665 ms
+
+-- План: обычные копии, второй прогон
+Aggregate  (cost=480.63..480.64 rows=1 width=8) (actual time=0.672..0.672 rows=1.00 loops=1)
+  Buffers: shared hit=176
+  ->  Hash Semi Join  (cost=227.50..479.61 rows=409 width=0) (actual time=0.132..0.664 rows=289.00 loops=1)
+        Hash Cond: (s.id = c.subscriber_id)
+        Buffers: shared hit=176
+        ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=4) (actual time=0.004..0.241 rows=8000.00 loops=1)
+              Buffers: shared hit=144
+        ->  Hash  (cost=222.39..222.39 rows=409 width=4) (actual time=0.126..0.126 rows=409.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 23kB
+              Buffers: shared hit=32
+              ->  Index Only Scan using ix_contract_plain_subscriber_id_provider_id on contract_plain c  (cost=0.29..222.39 rows=409 width=4) (actual time=0.014..0.106 rows=409.00 loops=1)
+                    Index Cond: (provider_id = 1)
+                    Heap Fetches: 0
+                    Index Searches: 1
+                    Buffers: shared hit=32
+Planning:
+  Buffers: shared hit=12
+Planning Time: 0.110 ms
+Execution Time: 0.683 ms
+
+Итог: секции — прочитано 2 (contract_p1, subscriber), cost 265.76, 0.665 мс; копия — contract_plain, subscriber, cost 480.64, 0.683 мс

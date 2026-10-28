@@ -228,6 +228,9 @@ COMMENT ON FUNCTION api.q_change_log_fields(bigint) IS
 -- Таблицы проекта (экран «Таблицы базы данных», макет DbTables.dc.html): назначение (из комментария таблицы, до « — »),
 -- оценка числа строк, размер с индексами по-русски, последняя очистка и сбор статистики, чтения целиком и по индексу.
 -- Пагинация — как у всех списков (CLAUDE.md, правило 5), по умолчанию — все таблицы одной страницей.
+-- Секционированная таблица (D30) — одна строка, как в макете: строки, размер, чтения — сумма по конечным секциям,
+-- последняя очистка — самая свежая из секций; сбор статистики — самой таблицы (статистику секционированной таблицы
+-- собирает только ANALYZE таблицы: автоочистка её не анализирует). Секции отдельными строками не выводятся.
 DROP FUNCTION IF EXISTS api.db_tables();
 DROP FUNCTION IF EXISTS api.db_tables(integer, integer);
 CREATE OR REPLACE FUNCTION api.db_tables(p_limit integer DEFAULT 200, p_offset integer DEFAULT 0)
@@ -241,23 +244,61 @@ AS $$
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_dba']);
     RETURN QUERY
-    SELECT t.schemaname || '.' || t.relname,
-           split_part(pg_catalog.obj_description(t.relid, 'pg_class'), ' — ', 1),
-           t.n_live_tup,
-           replace(replace(replace(replace(pg_catalog.pg_size_pretty(pg_catalog.pg_total_relation_size(t.relid)),
+    WITH t AS (                     -- таблицы проекта: обычные и секционированные, без самих секций
+        SELECT c.oid, n.nspname, c.relname, c.relkind
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname IN ('ref', 'core', 'sec', 'audit') AND c.relkind IN ('r', 'p') AND NOT c.relispartition),
+    leaf AS (                       -- где лежат строки: обычная таблица — она сама, секционированная — конечные секции
+        SELECT t.oid AS root, t.oid AS relid FROM t WHERE t.relkind = 'r'
+        UNION ALL
+        SELECT t.oid, pt.relid
+        FROM t CROSS JOIN LATERAL pg_catalog.pg_partition_tree(t.oid) pt
+        WHERE t.relkind = 'p' AND pt.isleaf),
+    s AS (
+        SELECT l.root,
+               sum(st.n_live_tup)::bigint                                   AS live,
+               sum(pg_catalog.pg_total_relation_size(l.relid))::bigint      AS bytes,
+               max(greatest(st.last_vacuum, st.last_autovacuum))            AS vacuumed,
+               sum(st.seq_scan)::bigint                                     AS seq,
+               sum(coalesce(st.idx_scan, 0))::bigint                        AS idx   -- без индексов idx_scan — NULL
+        FROM leaf l
+        JOIN pg_catalog.pg_stat_user_tables st ON st.relid = l.relid
+        GROUP BY l.root)
+    SELECT t.nspname || '.' || t.relname,
+           split_part(pg_catalog.obj_description(t.oid, 'pg_class'), ' — ', 1),
+           s.live,
+           replace(replace(replace(replace(pg_catalog.pg_size_pretty(s.bytes),
                    ' bytes', ' Б'), ' kB', ' кБ'), ' MB', ' МБ'), ' GB', ' ГБ'),
-           pg_catalog.pg_total_relation_size(t.relid),
-           greatest(t.last_vacuum, t.last_autovacuum),
-           greatest(t.last_analyze, t.last_autoanalyze),
-           t.seq_scan, coalesce(t.idx_scan, 0),             -- у таблицы без индексов idx_scan — NULL
+           s.bytes,
+           s.vacuumed,
+           greatest(pg_catalog.pg_stat_get_last_analyze_time(t.oid), pg_catalog.pg_stat_get_last_autoanalyze_time(t.oid)),
+           s.seq, s.idx,
            count(*) OVER ()
-    FROM pg_catalog.pg_stat_user_tables t
-    WHERE t.schemaname IN ('ref', 'core', 'sec', 'audit')
-    ORDER BY pg_catalog.pg_total_relation_size(t.relid) DESC, 1
+    FROM t
+    JOIN s ON s.root = t.oid
+    ORDER BY s.bytes DESC, 1
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
 COMMENT ON FUNCTION api.db_tables(integer, integer) IS
     'Состояние таблиц проекта: назначение, строки (оценка), размер с индексами, последняя очистка и сбор статистики, последовательные и индексные чтения; только администратор БД (D26)';
+
+-- Секции сеансов на год вперёд (D30): администратор БД вызывает раз в год (регламент — руководство администратора);
+-- без этого сеансы нового года попадут в секцию по умолчанию — функция их перенесёт при создании секции.
+-- Не список (не экран), поэтому без пагинации: строка на каждую созданную секцию года.
+DROP FUNCTION IF EXISTS api.db_session_partitions_ensure();
+CREATE OR REPLACE FUNCTION api.db_session_partitions_ensure()
+RETURNS TABLE (partition_name text, range_from date, range_to date, moved_rows bigint)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+SET TimeZone = 'Europe/Moscow'
+AS $$
+BEGIN
+    PERFORM sec.require_group(ARRAY['grp_dba']);
+    RETURN QUERY SELECT * FROM sec.session_partitions_ensure(current_date, (current_date + interval '1 year')::date);
+END $$;
+COMMENT ON FUNCTION api.db_session_partitions_ensure() IS
+    'Создаёт секции сеансов текущего и следующего года, если их нет (D30); только администратор БД';
 
 -- Подключения к базе (экран «Подключения к базе», макет DbConnections.dc.html). SECURITY INVOKER: текст запросов
 -- других сеансов виден благодаря pg_monitor у администратора БД, у владельца функций app_owner такого права нет.
@@ -302,8 +343,10 @@ GRANT EXECUTE ON FUNCTION api.q_users(text, text, integer, integer), api.user_cr
     api.user_set_login(text, boolean) TO grp_admin, grp_dba;
 REVOKE ALL ON api.v_manageable_groups FROM PUBLIC;
 GRANT SELECT ON api.v_manageable_groups TO grp_admin, grp_dba;
+REVOKE ALL ON FUNCTION api.db_session_partitions_ensure() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION api.q_change_log(date, date, text, text, text, integer, integer),
-    api.q_change_log_fields(bigint), api.db_tables(integer, integer), api.db_connections(integer, integer) TO grp_dba;
+    api.q_change_log_fields(bigint), api.db_tables(integer, integer), api.db_connections(integer, integer),
+    api.db_session_partitions_ensure() TO grp_dba;
 -- db_connections выполняется от имени пользователя: ему нужен доступ к функциям проверки группы.
 GRANT USAGE ON SCHEMA sec TO grp_dba;
 GRANT EXECUTE ON FUNCTION sec.require_group(text[]), sec.check_group(text[]), sec.current_group(), sec.group_of(name)

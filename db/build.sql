@@ -14,6 +14,7 @@ DROP SCHEMA IF EXISTS api, audit, sec, core, ref CASCADE;
 \ir migrations/020_domains.sql
 \ir migrations/030_ref_tables.sql
 \ir migrations/040_core_tables.sql
+\ir migrations/042_partitions.sql
 \ir migrations/045_app_user_role_check.sql
 \ir migrations/050_indexes.sql
 \ir migrations/055_sec_whoami.sql

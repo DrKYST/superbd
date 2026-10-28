@@ -28,6 +28,9 @@ SET TimeZone = 'Europe/Moscow';
 \echo '== 070 сброс пароля (D27)'
 \ir 070_password_reset.sql
 
+\echo '== 080 секционирование (ЛР 8, D30)'
+\ir 080_partitions.sql
+
 \echo '== итог'
 DO $$
 DECLARE

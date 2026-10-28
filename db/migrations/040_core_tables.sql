@@ -62,6 +62,10 @@ COMMENT ON COLUMN core.subscriber.row_version        IS 'Версия строк
 CREATE SEQUENCE IF NOT EXISTS core.contract_no_seq AS integer START 1;
 COMMENT ON SEQUENCE core.contract_no_seq IS 'Последовательность номеров договоров (D12)';
 
+-- Договоры секционированы по провайдеру (ЛР 8, D30): у каждого провайдера своя секция — сотрудники провайдера
+-- работают с ней (условие provider_id в функциях api отсекает чужие секции), аналитика — с таблицей целиком.
+-- Секцию создаёт триггер при регистрации провайдера (042). Первичный ключ секционированной таблицы обязан включать
+-- ключ секционирования: (id, provider_id); id по-прежнему выдаёт одна последовательность.
 CREATE TABLE IF NOT EXISTS core.contract (
     id             integer           GENERATED ALWAYS AS IDENTITY,
     provider_id    integer           NOT NULL,
@@ -79,7 +83,7 @@ CREATE TABLE IF NOT EXISTS core.contract (
     closed_on      date,
     note           text,
     row_version    integer           NOT NULL DEFAULT 1,
-    CONSTRAINT pk_contract PRIMARY KEY (id),
+    CONSTRAINT pk_contract PRIMARY KEY (id, provider_id),
     CONSTRAINT uq_contract_provider_id_contract_no UNIQUE (provider_id, contract_no),
     CONSTRAINT fk_contract_provider_id FOREIGN KEY (provider_id)
         REFERENCES core.provider (id) ON DELETE RESTRICT,
@@ -87,9 +91,9 @@ CREATE TABLE IF NOT EXISTS core.contract (
         REFERENCES core.subscriber (id) ON DELETE CASCADE,
     CONSTRAINT ck_contract_closed_after_connected CHECK (closed_on >= connected_on),
     CONSTRAINT ck_contract_row_version CHECK (row_version > 0)
-);
+) PARTITION BY LIST (provider_id);
 ALTER SEQUENCE core.contract_no_seq OWNED BY core.contract.contract_no;
-COMMENT ON TABLE  core.contract                IS 'Договор — таблица пересечения провайдера и абонента (связь M:N) с данными подключения';
+COMMENT ON TABLE  core.contract                IS 'Договор — таблица пересечения провайдера и абонента (связь M:N) с данными подключения; секционирована по провайдеру (D30)';
 COMMENT ON COLUMN core.contract.id             IS 'Код договора';
 COMMENT ON COLUMN core.contract.provider_id    IS 'Код провайдера';
 COMMENT ON COLUMN core.contract.contract_no    IS 'Номер договора';
@@ -105,27 +109,32 @@ COMMENT ON COLUMN core.contract.closed_on      IS 'Дата расторжени
 COMMENT ON COLUMN core.contract.note           IS 'Комментарий';
 COMMENT ON COLUMN core.contract.row_version    IS 'Версия строки';
 
--- PK сеанса включает дату: таблица будет секционирована по started_at (ЛР 8),
--- а PK секционированной таблицы обязан содержать ключ секционирования.
+-- Сеансы секционированы по времени начала (ЛР 8, D30) в два уровня: год → квартал, плюс секция по умолчанию;
+-- секции создаёт sec.session_partitions_ensure (042). PK включает дату — ключ секционирования.
 -- discount_pct и cost — снимок на момент сеанса (осознанная денормализация, D3).
+-- provider_id — провайдер договора: ключ договора секционирован по провайдеру и состоит из (id, provider_id),
+-- поэтому внешний ключ на договор составной; провайдер договора не меняется (D14), значение согласовано ключом.
+-- Вставка — только через core.session: в PostgreSQL 16 секции не наследуют identity (с 17 — наследуют).
 CREATE TABLE IF NOT EXISTS core.session (
     id           bigint        GENERATED ALWAYS AS IDENTITY,
     started_at   timestamptz   NOT NULL,
     contract_id  integer       NOT NULL,
+    provider_id  integer       NOT NULL,
     tariff_id    smallint      NOT NULL,
     volume_mb    ref.d_mb      NOT NULL,
     discount_pct ref.d_percent NOT NULL,
     cost         ref.d_money   NOT NULL,
     CONSTRAINT pk_session PRIMARY KEY (id, started_at),
-    CONSTRAINT fk_session_contract_id FOREIGN KEY (contract_id)
-        REFERENCES core.contract (id) ON DELETE CASCADE,
+    CONSTRAINT fk_session_contract_id_provider_id FOREIGN KEY (contract_id, provider_id)
+        REFERENCES core.contract (id, provider_id) ON DELETE CASCADE,
     CONSTRAINT fk_session_tariff_id FOREIGN KEY (tariff_id)
         REFERENCES ref.tariff (id) ON DELETE RESTRICT
-);
-COMMENT ON TABLE  core.session              IS 'Сеанс связи — базовая таблица';
+) PARTITION BY RANGE (started_at);
+COMMENT ON TABLE  core.session              IS 'Сеанс связи — базовая таблица; секционирована по времени начала: год → квартал (D30)';
 COMMENT ON COLUMN core.session.id           IS 'Код сеанса';
 COMMENT ON COLUMN core.session.started_at   IS 'Дата и время сеанса';
 COMMENT ON COLUMN core.session.contract_id  IS 'Код договора';
+COMMENT ON COLUMN core.session.provider_id  IS 'Код провайдера (провайдер договора)';
 COMMENT ON COLUMN core.session.tariff_id    IS 'Код тарифа';
 COMMENT ON COLUMN core.session.volume_mb    IS 'Количество Мб';
 COMMENT ON COLUMN core.session.discount_pct IS 'Скидка, %';

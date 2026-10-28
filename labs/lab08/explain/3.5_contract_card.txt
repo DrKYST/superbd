@@ -1,0 +1,137 @@
+Сравнение 3.5_contract_card (03_compare.sql)
+Что показывает: отсечения нет: сеансы договора без периода
+Запрос: Карточка договора, вкладка «Сеансы» (запрос 2 ЛР 5 без периода): по индексу (contract_id, started_at) в каждой секции и слияние — дороже, чем в обычной таблице
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+SELECT s.started_at, s.volume_mb, s.cost
+FROM core.session s
+WHERE s.contract_id = :q_contract
+ORDER BY s.started_at DESC
+LIMIT 20;
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+SELECT s.started_at, s.volume_mb, s.cost
+FROM lab8.session_plain s
+WHERE s.contract_id = :q_contract
+ORDER BY s.started_at DESC
+LIMIT 20;
+
+-- Результат (секционированные таблицы)
+          started_at           | volume_mb | cost  
+-------------------------------+-----------+-------
+ 2026-10-28 15:31:43.824972+03 |   390.000 | 32.37
+ 2026-10-28 07:45:51.912486+03 |  1420.000 | 58.93
+ 2026-10-26 23:09:32.295735+03 |    31.174 |  1.29
+ 2026-10-24 04:12:34.096913+03 |   490.070 | 16.27
+ 2026-10-08 23:41:39.513327+03 |   735.421 | 30.52
+ 2026-10-07 08:00:21.194167+03 |   173.387 |  7.20
+ 2026-10-05 11:56:41.468265+03 |   395.187 | 32.80
+ 2026-09-28 03:14:38.549056+03 |   667.810 | 27.71
+ 2026-09-24 14:28:37.156185+03 |   954.107 | 79.19
+ 2026-09-22 09:54:33.947983+03 |     5.504 |  0.46
+ 2026-09-13 08:01:53.033812+03 |  1438.450 | 47.76
+ 2026-08-11 16:55:07.525661+03 |   338.384 | 28.09
+ 2026-08-03 01:43:14.645399+03 |  1227.207 | 50.93
+ 2026-07-22 15:36:54.168509+03 |    89.680 |  7.44
+ 2026-07-16 07:59:40.096647+03 |  1823.798 | 75.69
+ 2026-06-30 21:47:01.217506+03 |     1.029 |  0.07
+ 2026-06-29 11:21:08.380274+03 |  1194.848 | 99.17
+ 2026-05-19 08:04:32.977032+03 |    99.145 |  4.11
+ 2026-05-11 23:21:56.706862+03 |   184.183 |  7.64
+ 2026-05-08 07:55:08.22291+03  |   276.943 | 11.49
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+Limit  (cost=4.44..97.89 rows=20 width=22) (actual time=0.070..0.082 rows=20.00 loops=1)
+  Buffers: shared hit=57
+  ->  Merge Append  (cost=4.44..434.29 rows=92 width=22) (actual time=0.070..0.081 rows=20.00 loops=1)
+        Sort Key: s.started_at DESC
+        Buffers: shared hit=57
+        ->  Index Scan Backward using session_2024_q4_contract_id_started_at_idx on session_2024_q4 s_4  (cost=0.29..32.15 rows=7 width=20) (actual time=0.013..0.013 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2024_q3_contract_id_started_at_idx on session_2024_q3 s_3  (cost=0.29..27.99 rows=6 width=20) (actual time=0.005..0.005 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2024_q2_contract_id_started_at_idx on session_2024_q2 s_2  (cost=0.29..27.65 rows=6 width=20) (actual time=0.004..0.004 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2024_q1_contract_id_started_at_idx on session_2024_q1 s_1  (cost=0.28..40.34 rows=11 width=20) (actual time=0.005..0.005 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2025_q4_contract_id_started_at_idx on session_2025_q4 s_8  (cost=0.29..32.34 rows=7 width=20) (actual time=0.005..0.005 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2025_q3_contract_id_started_at_idx on session_2025_q3 s_7  (cost=0.29..32.33 rows=7 width=20) (actual time=0.005..0.005 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2025_q2_contract_id_started_at_idx on session_2025_q2 s_6  (cost=0.29..32.30 rows=7 width=20) (actual time=0.004..0.004 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2025_q1_contract_id_started_at_idx on session_2025_q1 s_5  (cost=0.29..32.23 rows=7 width=20) (actual time=0.004..0.004 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2026_q4_contract_id_started_at_idx on session_2026_q4 s_12  (cost=0.29..32.41 rows=7 width=20) (actual time=0.003..0.006 rows=7.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=8
+        ->  Index Scan Backward using session_2026_q3_contract_id_started_at_idx on session_2026_q3 s_11  (cost=0.29..36.38 rows=8 width=20) (actual time=0.004..0.008 rows=8.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=10
+        ->  Index Scan Backward using session_2026_q2_contract_id_started_at_idx on session_2026_q2 s_10  (cost=0.29..32.38 rows=7 width=20) (actual time=0.004..0.006 rows=5.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=7
+        ->  Index Scan Backward using session_2026_q1_contract_id_started_at_idx on session_2026_q1 s_9  (cost=0.29..32.39 rows=7 width=20) (actual time=0.004..0.004 rows=1.00 loops=1)
+              Index Cond: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Index Scan Backward using session_2027_q4_started_at_idx on session_2027_q4 s_16  (cost=0.12..8.14 rows=1 width=72) (actual time=0.002..0.002 rows=0.00 loops=1)
+              Filter: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=1
+        ->  Index Scan Backward using session_2027_q3_started_at_idx on session_2027_q3 s_15  (cost=0.12..8.14 rows=1 width=72) (actual time=0.002..0.002 rows=0.00 loops=1)
+              Filter: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=1
+        ->  Index Scan Backward using session_2027_q2_started_at_idx on session_2027_q2 s_14  (cost=0.12..8.14 rows=1 width=72) (actual time=0.002..0.002 rows=0.00 loops=1)
+              Filter: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=1
+        ->  Index Scan Backward using session_2027_q1_started_at_idx on session_2027_q1 s_13  (cost=0.12..8.14 rows=1 width=72) (actual time=0.002..0.002 rows=0.00 loops=1)
+              Filter: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=1
+        ->  Index Scan Backward using session_default_started_at_idx on session_default s_17  (cost=0.12..8.14 rows=1 width=72) (actual time=0.002..0.002 rows=0.00 loops=1)
+              Filter: (contract_id = 11)
+              Index Searches: 1
+              Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=16
+Planning Time: 0.425 ms
+Execution Time: 0.148 ms
+
+-- План: обычные копии, второй прогон
+Limit  (cost=0.42..72.30 rows=20 width=20) (actual time=0.006..0.016 rows=20.00 loops=1)
+  Buffers: shared hit=23
+  ->  Index Scan Backward using ix_session_plain_contract_id_started_at on session_plain s  (cost=0.42..172.94 rows=48 width=20) (actual time=0.006..0.015 rows=20.00 loops=1)
+        Index Cond: (contract_id = 11)
+        Index Searches: 1
+        Buffers: shared hit=23
+Planning Time: 0.033 ms
+Execution Time: 0.020 ms
+
+Итог: секции — прочитано 17 (session_2024_q1, session_2024_q2, session_2024_q3, session_2024_q4, session_2025_q1, session_2025_q2, session_2025_q3, session_2025_q4, session_2026_q1, session_2026_q2, session_2026_q3, session_2026_q4, session_2027_q1, session_2027_q2, session_2027_q3, session_2027_q4, session_default), cost 97.89, 0.148 мс; копия — session_plain, cost 72.30, 0.020 мс

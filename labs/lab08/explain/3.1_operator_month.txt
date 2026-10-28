@@ -1,0 +1,76 @@
+Сравнение 3.1_operator_month (03_compare.sql)
+Что показывает: отсечение по времени: квартал сеансов, по списку: секция договоров провайдера
+Запрос: Журнал «Сеансы связи» оператора за месяц (запрос 3 ЛР 5, api.q_sessions): соединение по коду договора, отбор по провайдеру договора
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+SELECT count(*) AS sessions, sum(s.cost) AS cost
+FROM core.session s
+JOIN core.contract c ON c.id = s.contract_id
+WHERE c.provider_id = :q_provider
+  AND s.started_at >= '2026-09-01' AND s.started_at < '2026-10-01';
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+SELECT count(*) AS sessions, sum(s.cost) AS cost
+FROM lab8.session_plain s
+JOIN lab8.contract_plain c ON c.id = s.contract_id
+WHERE c.provider_id = :q_provider
+  AND s.started_at >= '2026-09-01' AND s.started_at < '2026-10-01';
+
+-- Результат (секционированные таблицы)
+ sessions |   cost   
+----------+----------
+      965 | 39047.45
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+Aggregate  (cost=1192.96..1192.97 rows=1 width=40) (actual time=3.383..3.384 rows=1.00 loops=1)
+  Buffers: shared hit=337
+  ->  Hash Join  (cost=17.52..1187.56 rows=1079 width=6) (actual time=0.059..3.331 rows=965.00 loops=1)
+        Hash Cond: (s.contract_id = c.id)
+        Buffers: shared hit=337
+        ->  Index Scan using session_2026_q3_started_at_idx on session_2026_q3 s  (cost=0.29..1099.20 rows=27085 width=10) (actual time=0.007..2.308 rows=27015.00 loops=1)
+              Index Cond: ((started_at >= '2026-09-01 00:00:00+03'::timestamp with time zone) AND (started_at < '2026-10-01 00:00:00+03'::timestamp with time zone))
+              Index Searches: 1
+              Buffers: shared hit=330
+        ->  Hash  (cost=12.11..12.11 rows=409 width=4) (actual time=0.048..0.048 rows=409.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 23kB
+              Buffers: shared hit=7
+              ->  Seq Scan on contract_p1 c  (cost=0.00..12.11 rows=409 width=4) (actual time=0.006..0.029 rows=409.00 loops=1)
+                    Filter: (provider_id = 1)
+                    Buffers: shared hit=7
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.189 ms
+Execution Time: 3.402 ms
+
+-- План: обычные копии, второй прогон
+Aggregate  (cost=1389.98..1389.99 rows=1 width=40) (actual time=2.854..2.856 rows=1.00 loops=1)
+  Buffers: shared hit=506
+  ->  Hash Join  (cost=226.10..1385.40 rows=916 width=6) (actual time=0.149..2.804 rows=965.00 loops=1)
+        Hash Cond: (s.contract_id = c.id)
+        Buffers: shared hit=506
+        ->  Index Scan using ix_session_plain_started_at on session_plain s  (cost=0.42..1089.12 rows=26885 width=10) (actual time=0.007..1.528 rows=27015.00 loops=1)
+              Index Cond: ((started_at >= '2026-09-01 00:00:00+03'::timestamp with time zone) AND (started_at < '2026-10-01 00:00:00+03'::timestamp with time zone))
+              Index Searches: 1
+              Buffers: shared hit=331
+        ->  Hash  (cost=220.57..220.57 rows=409 width=4) (actual time=0.139..0.139 rows=409.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 23kB
+              Buffers: shared hit=175
+              ->  Bitmap Heap Scan on contract_plain c  (cost=11.45..220.57 rows=409 width=4) (actual time=0.029..0.119 rows=409.00 loops=1)
+                    Recheck Cond: (provider_id = 1)
+                    Heap Blocks: exact=172
+                    Buffers: shared hit=175
+                    ->  Bitmap Index Scan on ix_contract_plain_provider_id_connected_on  (cost=0.00..11.35 rows=409 width=0) (actual time=0.014..0.014 rows=409.00 loops=1)
+                          Index Cond: (provider_id = 1)
+                          Index Searches: 1
+                          Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=14
+Planning Time: 0.175 ms
+Execution Time: 2.874 ms
+
+Итог: секции — прочитано 2 (contract_p1, session_2026_q3), cost 1 192.97, 3.402 мс; копия — contract_plain, ix_contract_plain_provider_id_connected_on, session_plain, cost 1 389.99, 2.874 мс

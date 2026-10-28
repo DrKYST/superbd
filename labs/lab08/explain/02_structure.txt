@@ -1,0 +1,84 @@
+-- Вывод labs/lab08/sql/02_structure.sql: Устройство секций
+
+2.1 core.session — секционирование по диапазону started_at: год → квартал (вложенные секции) и секция по умолчанию
+        partition        |      split_by      |                                  bound                                   |  rows  |  size   
+-------------------------+--------------------+--------------------------------------------------------------------------+--------+---------
+ session                 | RANGE (started_at) |                                                                          | 500025 | 86 MB
+     session_2024        | RANGE (started_at) | FOR VALUES FROM ('2024-01-01 00:00:00+03') TO ('2025-01-01 00:00:00+03') |  64540 | 11 MB
+         session_2024_q1 |                    | FOR VALUES FROM ('2024-01-01 00:00:00+03') TO ('2024-04-01 00:00:00+03') |   4141 | 824 kB
+         session_2024_q2 |                    | FOR VALUES FROM ('2024-04-01 00:00:00+03') TO ('2024-07-01 00:00:00+03') |  11941 | 2192 kB
+         session_2024_q3 |                    | FOR VALUES FROM ('2024-07-01 00:00:00+03') TO ('2024-10-01 00:00:00+03') |  20014 | 3568 kB
+         session_2024_q4 |                    | FOR VALUES FROM ('2024-10-01 00:00:00+03') TO ('2025-01-01 00:00:00+03') |  28444 | 5104 kB
+     session_2025        | RANGE (started_at) | FOR VALUES FROM ('2025-01-01 00:00:00+03') TO ('2026-01-01 00:00:00+03') | 190887 | 33 MB
+         session_2025_q1 |                    | FOR VALUES FROM ('2025-01-01 00:00:00+03') TO ('2025-04-01 00:00:00+03') |  35423 | 6216 kB
+         session_2025_q2 |                    | FOR VALUES FROM ('2025-04-01 00:00:00+03') TO ('2025-07-01 00:00:00+03') |  43337 | 7656 kB
+         session_2025_q3 |                    | FOR VALUES FROM ('2025-07-01 00:00:00+03') TO ('2025-10-01 00:00:00+03') |  52067 | 9248 kB
+         session_2025_q4 |                    | FOR VALUES FROM ('2025-10-01 00:00:00+03') TO ('2026-01-01 00:00:00+03') |  60060 | 10 MB
+     session_2026        | RANGE (started_at) | FOR VALUES FROM ('2026-01-01 00:00:00+03') TO ('2027-01-01 00:00:00+03') | 244598 | 42 MB
+         session_2026_q1 |                    | FOR VALUES FROM ('2026-01-01 00:00:00+03') TO ('2026-04-01 00:00:00+03') |  66117 | 11 MB
+         session_2026_q2 |                    | FOR VALUES FROM ('2026-04-01 00:00:00+03') TO ('2026-07-01 00:00:00+03') |  73080 | 12 MB
+         session_2026_q3 |                    | FOR VALUES FROM ('2026-07-01 00:00:00+03') TO ('2026-10-01 00:00:00+03') |  80577 | 14 MB
+         session_2026_q4 |                    | FOR VALUES FROM ('2026-10-01 00:00:00+03') TO ('2027-01-01 00:00:00+03') |  24824 | 4544 kB
+     session_2027        | RANGE (started_at) | FOR VALUES FROM ('2027-01-01 00:00:00+03') TO ('2028-01-01 00:00:00+03') |      0 | 160 kB
+         session_2027_q1 |                    | FOR VALUES FROM ('2027-01-01 00:00:00+03') TO ('2027-04-01 00:00:00+03') |      0 | 40 kB
+         session_2027_q2 |                    | FOR VALUES FROM ('2027-04-01 00:00:00+03') TO ('2027-07-01 00:00:00+03') |      0 | 40 kB
+         session_2027_q3 |                    | FOR VALUES FROM ('2027-07-01 00:00:00+03') TO ('2027-10-01 00:00:00+03') |      0 | 40 kB
+         session_2027_q4 |                    | FOR VALUES FROM ('2027-10-01 00:00:00+03') TO ('2028-01-01 00:00:00+03') |      0 | 40 kB
+     session_default     |                    | DEFAULT                                                                  |      0 | 80 kB
+
+2.2 core.contract — секционирование по списку provider_id: секция провайдера и секция по умолчанию
+    partition     |       bound        |    provider    | rows |  size  
+------------------+--------------------+----------------+------+--------
+ contract_p1      | FOR VALUES IN (1)  | ДонНет         |  409 | 224 kB
+ contract_p2      | FOR VALUES IN (2)  | ДонЛинк        |  379 | 208 kB
+ contract_p3      | FOR VALUES IN (3)  | Дон-Телеком    |  379 | 208 kB
+ contract_p4      | FOR VALUES IN (4)  | ДонСеть        |  379 | 208 kB
+ contract_p5      | FOR VALUES IN (5)  | ДонКоннект     |  422 | 232 kB
+ contract_p6      | FOR VALUES IN (6)  | АльфаНет       |  427 | 232 kB
+ contract_p7      | FOR VALUES IN (7)  | АльфаЛинк      |  415 | 224 kB
+ contract_p8      | FOR VALUES IN (8)  | Альфа-Телеком  |  438 | 256 kB
+ contract_p9      | FOR VALUES IN (9)  | АльфаСеть      |  410 | 224 kB
+ contract_p10     | FOR VALUES IN (10) | АльфаКоннект   |  403 | 208 kB
+ contract_p11     | FOR VALUES IN (11) | ВегаНет        |  407 | 208 kB
+ contract_p12     | FOR VALUES IN (12) | ВегаЛинк       |  380 | 208 kB
+ contract_p13     | FOR VALUES IN (13) | Вега-Телеком   |  447 | 256 kB
+ contract_p14     | FOR VALUES IN (14) | ВегаСеть       |  388 | 208 kB
+ contract_p15     | FOR VALUES IN (15) | ВегаКоннект    |  376 | 208 kB
+ contract_p16     | FOR VALUES IN (16) | МегаНет        |  361 | 208 kB
+ contract_p17     | FOR VALUES IN (17) | МегаЛинк       |  421 | 232 kB
+ contract_p18     | FOR VALUES IN (18) | Мега-Телеком   |  379 | 208 kB
+ contract_p19     | FOR VALUES IN (19) | МегаСеть       |  416 | 232 kB
+ contract_p20     | FOR VALUES IN (20) | МегаКоннект    |  401 | 208 kB
+ contract_p21     | FOR VALUES IN (21) | СфераНет       |  364 | 208 kB
+ contract_p22     | FOR VALUES IN (22) | СфераЛинк      |  449 | 256 kB
+ contract_p23     | FOR VALUES IN (23) | Сфера-Телеком  |  410 | 224 kB
+ contract_p24     | FOR VALUES IN (24) | СфераСеть      |  376 | 208 kB
+ contract_p25     | FOR VALUES IN (25) | СфераКоннект   |  410 | 224 kB
+ contract_p26     | FOR VALUES IN (26) | СпектрНет      |  366 | 208 kB
+ contract_p27     | FOR VALUES IN (27) | СпектрЛинк     |  434 | 256 kB
+ contract_p28     | FOR VALUES IN (28) | Спектр-Телеком |  374 | 208 kB
+ contract_p29     | FOR VALUES IN (29) | СпектрСеть     |  397 | 208 kB
+ contract_p30     | FOR VALUES IN (30) | СпектрКоннект  |  385 | 208 kB
+ contract_p31     | FOR VALUES IN (31) | Горизонт-Нет   |    0 | 48 kB
+ contract_default | DEFAULT            | —              |    0 | 48 kB
+
+2.3 Размер: секционированные таблицы (сумма секций) и обычные копии
+     table_name      | leaves |  heap   | indexes |  total  
+---------------------+--------+---------+---------+---------
+ core.session        |     17 | 37 MB   | 49 MB   | 86 MB
+ lab8.session_plain  |      1 | 37 MB   | 44 MB   | 81 MB
+ core.contract       |     32 | 2720 kB | 3984 kB | 6704 kB
+ lab8.contract_plain |      1 | 1672 kB | 1656 kB | 3328 kB
+
+2.4 Индексы секционированной таблицы: индекс родителя — секционированный, в каждой секции — свой
+                  parent_index                  | partition_indexes |  size   
+------------------------------------------------+-------------------+---------
+ core.pk_contract                               |                32 | 704 kB
+ core.uq_contract_provider_id_contract_no       |                32 | 1008 kB
+ core.pk_session                                |                17 | 15 MB
+ core.ix_session_tariff_id                      |                17 | 3712 kB
+ core.ix_session_contract_id_started_at         |                17 | 19 MB
+ core.ix_session_started_at                     |                17 | 11 MB
+ core.ix_contract_provider_id_connected_on      |                32 | 560 kB
+ core.ix_contract_subscriber_id_provider_id     |                32 | 496 kB
+ core.uq_contract_provider_id_ip_address_active |                32 | 1216 kB

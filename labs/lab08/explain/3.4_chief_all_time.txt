@@ -1,0 +1,96 @@
+Сравнение 3.4_chief_all_time (03_compare.sql)
+Что показывает: отсечения нет: условие на всё время данных
+Запрос: Выручка по кварталам за всё время (отчёт аналитика за 2024–2026 годы): читаются все секции — секционирование не помогает
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+SELECT to_char(date_trunc('quarter', s.started_at), 'YYYY-"Q"Q') AS quarter, count(*) AS sessions, sum(s.cost) AS cost
+FROM core.session s
+GROUP BY 1
+ORDER BY 1;
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+SELECT to_char(date_trunc('quarter', s.started_at), 'YYYY-"Q"Q') AS quarter, count(*) AS sessions, sum(s.cost) AS cost
+FROM lab8.session_plain s
+GROUP BY 1
+ORDER BY 1;
+
+-- Результат (секционированные таблицы)
+ quarter | sessions |    cost    
+---------+----------+------------
+ 2024-Q1 |     4141 |  169929.16
+ 2024-Q2 |    11941 |  511074.40
+ 2024-Q3 |    20014 |  852164.39
+ 2024-Q4 |    28444 | 1209100.18
+ 2025-Q1 |    35423 | 1510883.45
+ 2025-Q2 |    43337 | 1868773.37
+ 2025-Q3 |    52067 | 2230987.69
+ 2025-Q4 |    60060 | 2576673.02
+ 2026-Q1 |    66117 | 2815706.32
+ 2026-Q2 |    73080 | 3127498.57
+ 2026-Q3 |    80577 | 3454098.59
+ 2026-Q4 |    24824 | 1078026.78
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+GroupAggregate  (cost=62013.53..75764.27 rows=500025 width=72) (actual time=189.192..240.199 rows=12.00 loops=1)
+  Group Key: (to_char(date_trunc('quarter'::text, s.started_at), 'YYYY-"Q"Q'::text))
+  Buffers: shared hit=4681
+  ->  Sort  (cost=62013.53..63263.60 rows=500030 width=38) (actual time=188.711..200.346 rows=500025.00 loops=1)
+        Sort Key: (to_char(date_trunc('quarter'::text, s.started_at), 'YYYY-"Q"Q'::text))
+        Sort Method: quicksort  Memory: 27914kB
+        Buffers: shared hit=4681
+        ->  Append  (cost=0.00..14681.55 rows=500030 width=38) (actual time=0.015..153.576 rows=500025.00 loops=1)
+              Buffers: shared hit=4681
+              ->  Seq Scan on session_2024_q1 s_1  (cost=0.00..101.11 rows=4141 width=38) (actual time=0.014..1.117 rows=4141.00 loops=1)
+                    Buffers: shared hit=39
+              ->  Seq Scan on session_2024_q2 s_2  (cost=0.00..291.12 rows=11941 width=38) (actual time=0.006..3.083 rows=11941.00 loops=1)
+                    Buffers: shared hit=112
+              ->  Seq Scan on session_2024_q3 s_3  (cost=0.00..488.21 rows=20014 width=38) (actual time=0.008..5.745 rows=20014.00 loops=1)
+                    Buffers: shared hit=188
+              ->  Seq Scan on session_2024_q4 s_4  (cost=0.00..692.66 rows=28444 width=38) (actual time=0.019..7.636 rows=28444.00 loops=1)
+                    Buffers: shared hit=266
+              ->  Seq Scan on session_2025_q1 s_5  (cost=0.00..863.35 rows=35423 width=38) (actual time=0.019..9.563 rows=35423.00 loops=1)
+                    Buffers: shared hit=332
+              ->  Seq Scan on session_2025_q2 s_6  (cost=0.00..1056.06 rows=43337 width=38) (actual time=0.014..11.565 rows=43337.00 loops=1)
+                    Buffers: shared hit=406
+              ->  Seq Scan on session_2025_q3 s_7  (cost=0.00..1268.00 rows=52067 width=38) (actual time=0.025..13.498 rows=52067.00 loops=1)
+                    Buffers: shared hit=487
+              ->  Seq Scan on session_2025_q4 s_8  (cost=0.00..1462.90 rows=60060 width=38) (actual time=0.019..15.707 rows=60060.00 loops=1)
+                    Buffers: shared hit=562
+              ->  Seq Scan on session_2026_q1 s_9  (cost=0.00..1609.76 rows=66117 width=38) (actual time=0.024..17.610 rows=66117.00 loops=1)
+                    Buffers: shared hit=618
+              ->  Seq Scan on session_2026_q2 s_10  (cost=0.00..1779.20 rows=73080 width=38) (actual time=0.027..21.428 rows=73080.00 loops=1)
+                    Buffers: shared hit=683
+              ->  Seq Scan on session_2026_q3 s_11  (cost=0.00..1962.65 rows=80577 width=38) (actual time=0.030..23.170 rows=80577.00 loops=1)
+                    Buffers: shared hit=754
+              ->  Seq Scan on session_2026_q4 s_12  (cost=0.00..605.36 rows=24824 width=38) (actual time=0.028..6.970 rows=24824.00 loops=1)
+                    Buffers: shared hit=233
+              ->  Seq Scan on session_2027_q1 s_13  (cost=0.00..0.01 rows=1 width=38) (actual time=0.021..0.021 rows=0.00 loops=1)
+              ->  Seq Scan on session_2027_q2 s_14  (cost=0.00..0.01 rows=1 width=38) (actual time=0.004..0.004 rows=0.00 loops=1)
+              ->  Seq Scan on session_2027_q3 s_15  (cost=0.00..0.01 rows=1 width=38) (actual time=0.004..0.004 rows=0.00 loops=1)
+              ->  Seq Scan on session_2027_q4 s_16  (cost=0.00..0.01 rows=1 width=38) (actual time=0.004..0.004 rows=0.00 loops=1)
+              ->  Seq Scan on session_default s_17  (cost=0.00..1.00 rows=1 width=38) (actual time=0.006..0.006 rows=0.00 loops=1)
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=16
+Planning Time: 0.369 ms
+Execution Time: 241.270 ms
+
+-- План: обычные копии, второй прогон
+GroupAggregate  (cost=59505.84..73256.53 rows=500025 width=72) (actual time=189.345..244.775 rows=12.00 loops=1)
+  Group Key: (to_char(date_trunc('quarter'::text, started_at), 'YYYY-"Q"Q'::text))
+  Buffers: shared hit=4674
+  ->  Sort  (cost=59505.84..60755.91 rows=500025 width=38) (actual time=188.906..201.343 rows=500025.00 loops=1)
+        Sort Key: (to_char(date_trunc('quarter'::text, started_at), 'YYYY-"Q"Q'::text))
+        Sort Method: quicksort  Memory: 27914kB
+        Buffers: shared hit=4674
+        ->  Seq Scan on session_plain s  (cost=0.00..12174.38 rows=500025 width=38) (actual time=0.019..133.058 rows=500025.00 loops=1)
+              Buffers: shared hit=4674
+Planning Time: 0.090 ms
+Execution Time: 246.986 ms
+
+Итог: секции — прочитано 17 (session_2024_q1, session_2024_q2, session_2024_q3, session_2024_q4, session_2025_q1, session_2025_q2, session_2025_q3, session_2025_q4, session_2026_q1, session_2026_q2, session_2026_q3, session_2026_q4, session_2027_q1, session_2027_q2, session_2027_q3, session_2027_q4, session_default), cost 75 764.27, 241.270 мс; копия — session_plain, cost 73 256.53, 246.986 мс

@@ -139,10 +139,14 @@ BEGIN
                (SELECT count(*) FROM audit.change_log l WHERE l.changed_at >= v_today::timestamptz)::numeric,
                'change_log', now()
         UNION ALL
+        -- Таблицы — как на экране «Таблицы базы данных» (api.db_tables): секции не считаются отдельно (D30),
+        -- у секционированной таблицы — её собственная статистика (собирается только ANALYZE таблицы).
         SELECT 4, 'Таблиц без сбора статистики больше 7 дней',
-               (SELECT count(*) FROM pg_catalog.pg_stat_user_tables t
-                WHERE t.schemaname IN ('ref', 'core', 'sec', 'audit')
-                  AND coalesce(greatest(t.last_analyze, t.last_autoanalyze), '-infinity')
+               (SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname IN ('ref', 'core', 'sec', 'audit') AND c.relkind IN ('r', 'p') AND NOT c.relispartition
+                  AND coalesce(greatest(pg_catalog.pg_stat_get_last_analyze_time(c.oid),
+                                        pg_catalog.pg_stat_get_last_autoanalyze_time(c.oid)), '-infinity')
                       < now() - interval '7 days')::numeric,
                'db_tables', now();
     END IF;

@@ -1,0 +1,138 @@
+Сравнение 3.3_chief_quarter (03_compare.sql)
+Что показывает: отсечение по времени: аналитик, все провайдеры, квартал
+Запрос: Выручка по провайдерам за III квартал 2026 года (ветвь сеансов api.v_revenue_items, отчёты «Выручка по периодам», «Доли провайдеров»)
+Сервер: PostgreSQL 18.3 on x86_64-windows, compiled by msvc-19.44.35223, 64-bit
+work_mem = 64MB, shared_buffers = 512MB, max_parallel_workers_per_gather = 2
+core.session: 500025 сеансов, core.contract: 12002 договоров; снято 28.10.2026 20:11
+
+-- SQL: секционированные таблицы (core.session, core.contract)
+SELECT count(DISTINCT c.provider_id) AS providers, count(*) AS sessions, sum(s.cost) AS cost
+FROM core.session s
+JOIN core.contract c ON c.id = s.contract_id
+WHERE s.started_at >= '2026-07-01' AND s.started_at < '2026-10-01';
+
+-- SQL: обычные копии (lab8.session_plain, lab8.contract_plain)
+SELECT count(DISTINCT c.provider_id) AS providers, count(*) AS sessions, sum(s.cost) AS cost
+FROM lab8.session_plain s
+JOIN lab8.contract_plain c ON c.id = s.contract_id
+WHERE s.started_at >= '2026-07-01' AND s.started_at < '2026-10-01';
+
+-- Результат (секционированные таблицы)
+ providers | sessions |    cost    
+-----------+----------+------------
+        30 |    80577 | 3454098.59
+
+Результаты на секциях и на копиях совпадают: да
+
+-- План: секционированные таблицы, второй прогон
+Aggregate  (cost=10992.12..10992.13 rows=1 width=48) (actual time=32.075..32.088 rows=1.00 loops=1)
+  Buffers: shared hit=972
+  ->  Sort  (cost=10186.21..10387.69 rows=80590 width=10) (actual time=23.346..27.345 rows=80577.00 loops=1)
+        Sort Key: c.provider_id
+        Sort Method: quicksort  Memory: 5591kB
+        Buffers: shared hit=972
+        ->  Hash Join  (cost=548.09..3618.81 rows=80590 width=10) (actual time=1.875..17.238 rows=80577.00 loops=1)
+              Hash Cond: (s.contract_id = c.id)
+              Buffers: shared hit=972
+              ->  Seq Scan on session_2026_q3 s  (cost=0.00..1962.65 rows=80577 width=10) (actual time=0.012..6.501 rows=80577.00 loops=1)
+                    Filter: ((started_at >= '2026-07-01 00:00:00+03'::timestamp with time zone) AND (started_at < '2026-10-01 00:00:00+03'::timestamp with time zone))
+                    Buffers: shared hit=754
+              ->  Hash  (cost=398.04..398.04 rows=12004 width=8) (actual time=1.832..1.843 rows=12002.00 loops=1)
+                    Buckets: 16384  Batches: 1  Memory Usage: 597kB
+                    Buffers: shared hit=218
+                    ->  Append  (cost=0.00..398.04 rows=12004 width=8) (actual time=0.006..1.216 rows=12002.00 loops=1)
+                          Buffers: shared hit=218
+                          ->  Seq Scan on contract_p1 c_1  (cost=0.00..11.09 rows=409 width=8) (actual time=0.005..0.029 rows=409.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p2 c_2  (cost=0.00..10.79 rows=379 width=8) (actual time=0.005..0.025 rows=379.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p3 c_3  (cost=0.00..10.79 rows=379 width=8) (actual time=0.005..0.026 rows=379.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p4 c_4  (cost=0.00..10.79 rows=379 width=8) (actual time=0.006..0.026 rows=379.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p5 c_5  (cost=0.00..12.22 rows=422 width=8) (actual time=0.004..0.026 rows=422.00 loops=1)
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p6 c_6  (cost=0.00..12.27 rows=427 width=8) (actual time=0.006..0.029 rows=427.00 loops=1)
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p7 c_7  (cost=0.00..11.15 rows=415 width=8) (actual time=0.004..0.026 rows=415.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p8 c_8  (cost=0.00..12.38 rows=438 width=8) (actual time=0.004..0.036 rows=438.00 loops=1)
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p9 c_9  (cost=0.00..11.10 rows=410 width=8) (actual time=0.005..0.026 rows=410.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p10 c_10  (cost=0.00..11.03 rows=403 width=8) (actual time=0.005..0.026 rows=403.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p11 c_11  (cost=0.00..11.07 rows=407 width=8) (actual time=0.007..0.029 rows=407.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p12 c_12  (cost=0.00..10.80 rows=380 width=8) (actual time=0.005..0.023 rows=380.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p13 c_13  (cost=0.00..12.47 rows=447 width=8) (actual time=0.004..0.027 rows=447.00 loops=1)
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p14 c_14  (cost=0.00..10.88 rows=388 width=8) (actual time=0.004..0.025 rows=388.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p15 c_15  (cost=0.00..10.76 rows=376 width=8) (actual time=0.004..0.025 rows=376.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p16 c_16  (cost=0.00..10.61 rows=361 width=8) (actual time=0.004..0.021 rows=361.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p17 c_17  (cost=0.00..12.21 rows=421 width=8) (actual time=0.005..0.027 rows=421.00 loops=1)
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p18 c_18  (cost=0.00..10.79 rows=379 width=8) (actual time=0.005..0.024 rows=379.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p19 c_19  (cost=0.00..12.16 rows=416 width=8) (actual time=0.006..0.048 rows=416.00 loops=1)
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p20 c_20  (cost=0.00..11.01 rows=401 width=8) (actual time=0.006..0.027 rows=401.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p21 c_21  (cost=0.00..10.64 rows=364 width=8) (actual time=0.007..0.025 rows=364.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p22 c_22  (cost=0.00..12.49 rows=449 width=8) (actual time=0.005..0.036 rows=449.00 loops=1)
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p23 c_23  (cost=0.00..11.10 rows=410 width=8) (actual time=0.005..0.026 rows=410.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p24 c_24  (cost=0.00..10.76 rows=376 width=8) (actual time=0.005..0.024 rows=376.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p25 c_25  (cost=0.00..11.10 rows=410 width=8) (actual time=0.005..0.026 rows=410.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p26 c_26  (cost=0.00..10.66 rows=366 width=8) (actual time=0.005..0.023 rows=366.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p27 c_27  (cost=0.00..12.34 rows=434 width=8) (actual time=0.005..0.026 rows=434.00 loops=1)
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p28 c_28  (cost=0.00..10.74 rows=374 width=8) (actual time=0.005..0.024 rows=374.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p29 c_29  (cost=0.00..10.97 rows=397 width=8) (actual time=0.005..0.025 rows=397.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p30 c_30  (cost=0.00..10.85 rows=385 width=8) (actual time=0.005..0.026 rows=385.00 loops=1)
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p31 c_31  (cost=0.00..0.00 rows=1 width=8) (actual time=0.004..0.004 rows=0.00 loops=1)
+                          ->  Seq Scan on contract_default c_32  (cost=0.00..0.00 rows=1 width=8) (actual time=0.004..0.004 rows=0.00 loops=1)
+Planning:
+  Buffers: shared hit=16
+Planning Time: 1.064 ms
+Execution Time: 32.596 ms
+
+-- План: обычные копии, второй прогон
+Aggregate  (cost=12123.41..12123.42 rows=1 width=48) (actual time=30.143..30.146 rows=1.00 loops=1)
+  Buffers: shared hit=1013
+  ->  Sort  (cost=11322.99..11523.09 rows=80042 width=10) (actual time=22.160..25.410 rows=80577.00 loops=1)
+        Sort Key: c.provider_id
+        Sort Method: quicksort  Memory: 5591kB
+        Buffers: shared hit=1013
+        ->  Hash Join  (cost=470.76..4804.18 rows=80042 width=10) (actual time=1.395..16.125 rows=80577.00 loops=1)
+              Hash Cond: (s.contract_id = c.id)
+              Buffers: shared hit=1013
+              ->  Index Scan using ix_session_plain_started_at on session_plain s  (cost=0.42..3233.26 rows=80042 width=10) (actual time=0.012..4.856 rows=80577.00 loops=1)
+                    Index Cond: ((started_at >= '2026-07-01 00:00:00+03'::timestamp with time zone) AND (started_at < '2026-10-01 00:00:00+03'::timestamp with time zone))
+                    Index Searches: 1
+                    Buffers: shared hit=978
+              ->  Hash  (cost=320.31..320.31 rows=12002 width=8) (actual time=1.344..1.345 rows=12002.00 loops=1)
+                    Buckets: 16384  Batches: 1  Memory Usage: 597kB
+                    Buffers: shared hit=35
+                    ->  Index Only Scan using pk_contract_plain on contract_plain c  (cost=0.29..320.31 rows=12002 width=8) (actual time=0.005..0.660 rows=12002.00 loops=1)
+                          Heap Fetches: 0
+                          Index Searches: 1
+                          Buffers: shared hit=35
+Planning:
+  Buffers: shared hit=14
+Planning Time: 0.355 ms
+Execution Time: 30.588 ms
+
+Итог: секции — прочитано 33 (contract_default, contract_p1, contract_p10, contract_p11, contract_p12, contract_p13, contract_p14, contract_p15, contract_p16, contract_p17, contract_p18, contract_p19, contract_p2, contract_p20, contract_p21, contract_p22, contract_p23, contract_p24, contract_p25, contract_p26, contract_p27, contract_p28, contract_p29, contract_p3, contract_p30, contract_p31, contract_p4, contract_p5, contract_p6, contract_p7, contract_p8, contract_p9, session_2026_q3), cost 10 992.13, 32.596 мс; копия — contract_plain, session_plain, cost 12 123.42, 30.588 мс

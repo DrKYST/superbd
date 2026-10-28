@@ -246,7 +246,7 @@ BEGIN
     LEFT JOIN core.session se ON se.contract_id = c.id
     WHERE c.provider_id = ANY (v_scope) AND c.closed_on IS NULL
       AND c.connected_on < v_border
-    GROUP BY c.id, s.id
+    GROUP BY c.id, c.provider_id, s.id      -- первичный ключ договора — (id, provider_id) (секции по провайдеру, D30)
     HAVING max(se.started_at) IS NULL                       -- сеансов не было
         OR max(se.started_at) < v_border::timestamptz        -- или последний — до границы
     ORDER BY max(se.started_at) NULLS FIRST, c.connected_on, c.contract_no

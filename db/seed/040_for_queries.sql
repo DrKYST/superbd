@@ -35,16 +35,16 @@ LIMIT 2;
 -- тариф — по окну времени и типу дня (D2/D13), стоимость — по формуле D3.
 -- Время считается в часовом поясе предметной области (D19).
 SET TimeZone = 'Europe/Moscow';
-INSERT INTO core.session (started_at, contract_id, tariff_id, volume_mb, discount_pct, cost)
-SELECT x.started_at, x.contract_id, tr.id, x.volume_mb, tr.discount_pct,
+INSERT INTO core.session (started_at, contract_id, provider_id, tariff_id, volume_mb, discount_pct, cost)
+SELECT x.started_at, x.contract_id, x.provider_id, tr.id, x.volume_mb, tr.discount_pct,
        round(x.volume_mb * x.price_per_mb * (1 - tr.discount_pct / 100), 2)
 FROM (
-    SELECT c.id AS contract_id, c.price_per_mb,
+    SELECT c.id AS contract_id, c.provider_id, c.price_per_mb,
            date_trunc('day', now()) + (now() - date_trunc('day', now())) * (g::numeric / 26) AS started_at,
            round((50 + (g * 137) % 2400)::numeric, 3) AS volume_mb
     FROM generate_series(1, 25) g
     JOIN LATERAL (
-        SELECT c.id, c.price_per_mb
+        SELECT c.id, c.provider_id, c.price_per_mb
         FROM core.contract c JOIN core.provider p ON p.id = c.provider_id
         WHERE p.name = 'ДонНет' AND c.closed_on IS NULL AND c.connected_on < current_date
         ORDER BY c.id

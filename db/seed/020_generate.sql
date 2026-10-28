@@ -1,4 +1,5 @@
--- Seed 020. Псевдослучайные данные: провайдеры, абоненты, договоры, сеансы (ТЗ п. 4: 10 000 – 50 000+ строк).
+-- Seed 020. Псевдослучайные данные: провайдеры, абоненты, договоры, сеансы (ТЗ п. 4: 10 000 – 50 000+ строк;
+-- сеансов — 500 000 для ЛР 8, D30).
 -- Результат повторяем: setseed(0.16) перед генерацией. Повторный запуск пересоздаёт данные
 -- (TRUNCATE ... RESTART IDENTITY сбрасывает и последовательность номеров договоров).
 -- Данные соблюдают ограничения, которые позже будут проверять триггеры (labs/lab03/spec.md, §5):
@@ -184,25 +185,48 @@ FROM c
 CROSS JOIN pv
 ORDER BY c.connected_on, c.n;
 
--- ---------------------------------------------------------------- сеансы (100 000)
--- Время сеанса — случайное в периоде действия договора (от даты подключения до конца дня расторжения
--- или до начала текущего дня: верхняя граница не зависит от now(), поэтому в пределах суток результат повторяем). Тариф — по окну времени и типу дня (D2/D13, окно через полночь при
+-- ---------------------------------------------------------------- сеансы (500 000)
+-- Число сеансов — psql-переменная sessions (по умолчанию 500 000 — объём ЛР 8, D30); для быстрой отладочной сборки:
+--   psql … -v sessions=100000 -f db/build.sql
+-- Сеансы распределяются по договорам пропорционально сроку действия договора (дней от подключения до расторжения или
+-- до начала текущего дня): у договора, действующего два года, сеансов вдвое больше, чем у годового, — число сеансов в
+-- месяце растёт вместе с числом действующих договоров (до D30 договор выбирался равновероятно, и сеансы молодых
+-- договоров сгущались в последних месяцах). Округление — методом наибольших остатков: в сумме ровно :sessions.
+-- Время сеанса — случайное в периоде действия договора (верхняя граница — начало текущего дня, не now(): в пределах
+-- суток результат повторяем). Тариф — по окну времени и типу дня (D2/D13, окно через полночь при
 -- time_from > time_to); изредка «ручные»: образовательный для учебных заведений, акционный.
 -- «Праздничный» и «Служебный» не используются — тарифы без сеансов нужны для внешних соединений (ЛР 5).
 -- Скидка и стоимость — снимок на момент сеанса (D3), считаются здесь: триггера ещё нет.
-WITH ids AS (SELECT array_agg(id ORDER BY id) AS ids FROM core.contract),
-     pick AS (SELECT g, pg_temp.pick(ids.ids) AS contract_id FROM ids, generate_series(1, 100000) g),
-     s AS (
-        SELECT p.g, ct.id AS contract_id, ct.price_per_mb, st.name AS subscriber_type,
-               ct.connected_on::timestamptz
-                   + random() * (least(coalesce(ct.closed_on + 1, current_date)::timestamptz, current_date::timestamptz)
-                                 - ct.connected_on::timestamptz) AS started_at,
-               round((1 + random() ^ 3 * 1999)::numeric, 3) AS volume_mb,
-               random() AS manual_roll
-        FROM pick p
-        JOIN core.contract ct ON ct.id = p.contract_id
+-- Провайдер сеанса — провайдер договора (составной внешний ключ, D30).
+\if :{?sessions}
+\else
+\set sessions 500000
+\endif
+WITH c AS (
+        SELECT ct.id, ct.provider_id, ct.price_per_mb, ct.connected_on,
+               least(coalesce(ct.closed_on + 1, current_date), current_date) AS until_on,
+               least(coalesce(ct.closed_on + 1, current_date), current_date) - ct.connected_on AS days,
+               st.name AS subscriber_type
+        FROM core.contract ct
         JOIN core.subscriber sb ON sb.id = ct.subscriber_id
         JOIN ref.subscriber_type st ON st.id = sb.subscriber_type_id),
+     w AS (SELECT c.*, :sessions::numeric * c.days / sum(c.days) OVER () AS share FROM c),
+     n AS (SELECT w.*,
+                  floor(w.share)::int
+                  + CASE WHEN row_number() OVER (ORDER BY w.share - floor(w.share) DESC, w.id)
+                              <= :sessions - sum(floor(w.share)) OVER () THEN 1 ELSE 0 END AS n
+           FROM w),
+     pick AS MATERIALIZED (          -- строки сеансов в постоянном порядке: случайные величины ниже повторяемы
+        SELECT n.id AS contract_id, n.provider_id, n.price_per_mb, n.subscriber_type, n.connected_on, n.until_on, g
+        FROM n CROSS JOIN LATERAL generate_series(1, n.n) g
+        ORDER BY n.id, g),
+     s AS (
+        SELECT p.contract_id, p.provider_id, p.price_per_mb, p.subscriber_type,
+               p.connected_on::timestamptz
+                   + random() * (p.until_on::timestamptz - p.connected_on::timestamptz) AS started_at,
+               round((1 + random() ^ 3 * 1999)::numeric, 3) AS volume_mb,
+               random() AS manual_roll
+        FROM pick p),
      t AS (
         SELECT s.*,
                CASE WHEN s.subscriber_type IN ('Школа', 'Колледж', 'Вуз') AND s.manual_roll < 0.40
@@ -218,8 +242,8 @@ WITH ids AS (SELECT array_agg(id ORDER BY id) AS ids FROM core.contract),
                                 END)
                END AS tariff_id
         FROM s)
-INSERT INTO core.session (started_at, contract_id, tariff_id, volume_mb, discount_pct, cost)
-SELECT t.started_at, t.contract_id, t.tariff_id, t.volume_mb, tr.discount_pct,
+INSERT INTO core.session (started_at, contract_id, provider_id, tariff_id, volume_mb, discount_pct, cost)
+SELECT t.started_at, t.contract_id, t.provider_id, t.tariff_id, t.volume_mb, tr.discount_pct,
        round(t.volume_mb * t.price_per_mb * (1 - tr.discount_pct / 100), 2)
 FROM t
 JOIN ref.tariff tr ON tr.id = t.tariff_id

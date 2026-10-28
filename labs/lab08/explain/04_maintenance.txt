@@ -1,0 +1,136 @@
+-- Вывод labs/lab08/sql/04_maintenance.sql: добавление и удаление данных, обслуживание секций
+
+Параметры: провайдер 1 , договор 11
+4.1 Вставка через родительскую таблицу: строка сама попадает в секцию квартала (сеанс) и провайдера (договор)
+BEGIN;
+INSERT INTO core.session (started_at, contract_id, provider_id, tariff_id, volume_mb, discount_pct, cost)
+SELECT ts, c.id, c.provider_id, t.id, 10, t.discount_pct, round(10 * c.price_per_mb * (1 - t.discount_pct / 100), 2)
+FROM core.contract c, ref.tariff t,
+     (VALUES (timestamptz '2024-03-15 10:00+03'), (timestamptz '2025-08-01 12:00+03'), (timestamptz '2026-09-30 23:59+03')) v(ts)
+WHERE c.id = 11 AND c.provider_id = 1 AND t.code = 'А'
+RETURNING tableoid::regclass AS partition, started_at;
+      partition       |       started_at       
+----------------------+------------------------
+ core.session_2024_q1 | 2024-03-15 10:00:00+03
+ core.session_2025_q3 | 2025-08-01 12:00:00+03
+ core.session_2026_q3 | 2026-09-30 23:59:00+03
+
+INSERT INTO core.contract (provider_id, subscriber_id, connection_fee, price_per_mb, ip_address, connection_address)
+SELECT p.id, s.id, 0, 0.1, ('10.250.0.' || p.id)::inet, s.address
+FROM core.provider p CROSS JOIN LATERAL (SELECT * FROM core.subscriber ORDER BY id LIMIT 1) s
+WHERE p.name IN ('ДонНет', 'ДонЛинк', 'Горизонт-Нет')
+RETURNING tableoid::regclass AS partition, provider_id, contract_no;
+     partition     | provider_id |  contract_no  
+-------------------+-------------+---------------
+ core.contract_p1  |           1 | Д-2026-012008
+ core.contract_p2  |           2 | Д-2026-012009
+ core.contract_p31 |          31 | Д-2026-012010
+
+ROLLBACK;
+4.2 Регистрация провайдера: триггер создаёт его секцию договоров (D30)
+BEGIN;
+INSERT INTO core.provider (name, ownership_type_id, city_id, address, phone, founded_year)
+SELECT 'Новый провайдер', ot.id, ci.id, 'ул. Университетская, д. 1', '+7 856 111-22-33', 2026
+FROM ref.ownership_type ot, ref.city ci WHERE ot.name = 'ООО' AND ci.name = 'Донецк'
+RETURNING id AS new_provider 
+SELECT c.relname AS partition, pg_get_expr(c.relpartbound, c.oid) AS bound, obj_description(c.oid, 'pg_class') AS comment
+FROM pg_class c WHERE c.oid = to_regclass('core.contract_p' || 33);
+  partition   |       bound        |                    comment                    
+--------------+--------------------+-----------------------------------------------
+ contract_p33 | FOR VALUES IN (33) | Договор — секция провайдера «Новый провайдер»
+
+ROLLBACK;
+4.3 Архивирование года: отсоединение секции 2024 года (DETACH) против удаления строк из обычной таблицы
+BEGIN;
+SELECT count(*) AS sessions_2024_before FROM core.session WHERE started_at < '2025-01-01';
+ sessions_2024_before 
+----------------------
+                64540
+
+SELECT clock_timestamp() AS t0 
+ALTER TABLE core.session DETACH PARTITION core.session_2024;
+SELECT round(extract(epoch FROM clock_timestamp() - '2026-10-28 20:11:38.255972+03'::timestamptz) * 1000, 1) AS detach_ms,
+       (SELECT count(*) FROM core.session WHERE started_at < '2025-01-01') AS sessions_2024_in_table,
+       (SELECT count(*) FROM core.session_2024) AS rows_in_detached_table;
+ detach_ms | sessions_2024_in_table | rows_in_detached_table 
+-----------+------------------------+------------------------
+      16.2 |                      0 |                  64540
+
+SELECT clock_timestamp() AS t0 
+DROP TABLE core.session_2024;
+SELECT round(extract(epoch FROM clock_timestamp() - '2026-10-28 20:11:38.274468+03'::timestamptz) * 1000, 1) AS drop_ms;
+ drop_ms 
+---------
+     6.7
+
+ROLLBACK;
+BEGIN;
+SELECT clock_timestamp() AS t0 
+DELETE FROM lab8.session_plain WHERE started_at < '2025-01-01';
+SELECT round(extract(epoch FROM clock_timestamp() - '2026-10-28 20:11:38.281437+03'::timestamptz) * 1000, 1) AS plain_delete_ms;
+ plain_delete_ms 
+-----------------
+            20.8
+
+ROLLBACK;
+4.4 Возврат архивного года: ATTACH с готовым CHECK — без проверочного чтения таблицы
+BEGIN;
+ALTER TABLE core.session DETACH PARTITION core.session_2024;
+ALTER TABLE core.session_2024 ADD CONSTRAINT ck_session_2024_range
+    CHECK (started_at >= '2024-01-01 00:00+03' AND started_at < '2025-01-01 00:00+03');
+SELECT clock_timestamp() AS t0 
+ALTER TABLE core.session ATTACH PARTITION core.session_2024
+    FOR VALUES FROM ('2024-01-01 00:00+03') TO ('2025-01-01 00:00+03');
+SELECT round(extract(epoch FROM clock_timestamp() - '2026-10-28 20:11:38.31314+03'::timestamptz) * 1000, 1) AS attach_ms,
+       (SELECT count(*) FROM core.session WHERE started_at < '2025-01-01') AS sessions_2024_back;
+ attach_ms | sessions_2024_back 
+-----------+--------------------
+       8.7 |              64540
+
+ROLLBACK;
+4.5 Удаление договора: каскад удаляет его сеансы во всех секциях
+BEGIN;
+SELECT s.tableoid::regclass AS partition, count(*) AS sessions
+FROM core.session s WHERE s.contract_id = 11 GROUP BY 1 ORDER BY 1;
+      partition       | sessions 
+----------------------+----------
+ core.session_2024_q1 |       11
+ core.session_2024_q2 |        2
+ core.session_2024_q3 |        5
+ core.session_2024_q4 |       12
+ core.session_2025_q1 |       12
+ core.session_2025_q2 |        3
+ core.session_2025_q3 |       11
+ core.session_2025_q4 |        9
+ core.session_2026_q1 |        4
+ core.session_2026_q2 |        6
+ core.session_2026_q3 |        8
+ core.session_2026_q4 |        7
+
+DELETE FROM core.contract WHERE id = 11 AND provider_id = 1;
+SELECT count(*) AS sessions_left FROM core.session WHERE contract_id = 11;
+ sessions_left 
+---------------
+             0
+
+ROLLBACK;
+4.6 Секции следующих лет: функция создаёт недостающий год (здесь — через два года) с четырьмя кварталами
+BEGIN;
+SELECT * FROM sec.session_partitions_ensure(current_date, (current_date + interval '2 years')::date);
+  partition_name   | range_from |  range_to  | moved_rows 
+-------------------+------------+------------+------------
+ core.session_2028 | 2028-01-01 | 2029-01-01 |          0
+
+SELECT c.relname, pg_get_expr(c.relpartbound, c.oid) AS bound
+FROM pg_partition_tree('core.session') t JOIN pg_class c ON c.oid = t.relid
+WHERE c.relname LIKE 'session\_' || (extract(year FROM current_date)::int + 2) || '%'
+ORDER BY 1;
+     relname     |                                  bound                                   
+-----------------+--------------------------------------------------------------------------
+ session_2028    | FOR VALUES FROM ('2028-01-01 00:00:00+03') TO ('2029-01-01 00:00:00+03')
+ session_2028_q1 | FOR VALUES FROM ('2028-01-01 00:00:00+03') TO ('2028-04-01 00:00:00+03')
+ session_2028_q2 | FOR VALUES FROM ('2028-04-01 00:00:00+03') TO ('2028-07-01 00:00:00+03')
+ session_2028_q3 | FOR VALUES FROM ('2028-07-01 00:00:00+03') TO ('2028-10-01 00:00:00+03')
+ session_2028_q4 | FOR VALUES FROM ('2028-10-01 00:00:00+03') TO ('2029-01-01 00:00:00+03')
+
+ROLLBACK;
