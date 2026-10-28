@@ -31,6 +31,9 @@ SET TimeZone = 'Europe/Moscow';
 \echo '== 080 секционирование (ЛР 8, D30)'
 \ir 080_partitions.sql
 
+\echo '== 090 запросы ТЗ курсового проекта 17–23 (D31)'
+\ir 090_queries_coursework.sql
+
 \echo '== итог'
 DO $$
 DECLARE

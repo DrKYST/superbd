@@ -22,6 +22,8 @@
 --  * Выражения от ввода пользователя (шаблоны поиска) вычисляются один раз в DECLARE, а не для каждой строки.
 --  * Отбор строк — до соединения и группировки; группировка — по первичным ключам.
 --  * Регулярные выражения не используются: строки разбираются translate(), left(), LIKE по шаблону-префиксу.
+--  * Деньги, Мб, скидка в колонках результата — те же домены, что в таблицах (ref.d_money, ref.d_mb, …), без
+--    приведения к numeric: клиент получает базовый тип домена (numeric), суммы домена и так numeric.
 SET ROLE app_owner;
 
 -- ============================================================================ представления (5, 6, 7)
@@ -104,8 +106,8 @@ SELECT c.id,
        st.name::text AS subscriber_type,
        s.phone::text AS subscriber_phone,
        c.connected_on,
-       c.connection_fee::numeric AS connection_fee,
-       c.price_per_mb::numeric AS price_per_mb,
+       c.connection_fee,
+       c.price_per_mb,
        host(c.ip_address) AS ip_address,
        c.closed_on,
        CASE WHEN c.closed_on IS NULL THEN 'Действует'
@@ -182,7 +184,7 @@ CREATE OR REPLACE FUNCTION api.q_contract_sessions(
     p_offset integer DEFAULT 0)
 RETURNS TABLE (
     id bigint, started_at timestamptz, tariff_code text, tariff_name text,
-    volume_mb numeric, discount_pct numeric, cost numeric,
+    volume_mb ref.d_mb, discount_pct ref.d_percent, cost ref.d_money,
     total_count bigint, total_volume_mb numeric, total_cost numeric)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -195,7 +197,7 @@ BEGIN
     PERFORM sec.require_group(ARRAY['grp_operator', 'grp_manager', 'grp_chief']);
     RETURN QUERY
     SELECT s.id, s.started_at, t.code::text, t.name::text,
-           s.volume_mb::numeric, s.discount_pct::numeric, s.cost::numeric,
+           s.volume_mb, s.discount_pct, s.cost,
            count(*) OVER (), sum(s.volume_mb) OVER (), sum(s.cost) OVER ()
     FROM core.session s
     JOIN core.contract c ON c.id = s.contract_id
@@ -225,8 +227,8 @@ CREATE OR REPLACE FUNCTION api.q_sessions(
 RETURNS TABLE (
     id bigint, started_at timestamptz, contract_id integer, contract_no text,
     subscriber_id integer, subscriber_name text, ip_address text,
-    tariff_code text, tariff_name text, volume_mb numeric, discount_pct numeric,
-    price_per_mb numeric, cost numeric,
+    tariff_code text, tariff_name text, volume_mb ref.d_mb, discount_pct ref.d_percent,
+    price_per_mb ref.d_price_mb, cost ref.d_money,
     total_count bigint, total_volume_mb numeric, total_cost numeric)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -254,8 +256,8 @@ BEGIN
     RETURN QUERY
     SELECT s.id, s.started_at, c.id, c.contract_no::text,
            sb.id, sb.name::text, host(c.ip_address),
-           t.code::text, t.name::text, s.volume_mb::numeric, s.discount_pct::numeric,
-           c.price_per_mb::numeric, s.cost::numeric,
+           t.code::text, t.name::text, s.volume_mb, s.discount_pct,
+           c.price_per_mb, s.cost,
            count(*) OVER (), sum(s.volume_mb) OVER (), sum(s.cost) OVER ()
     FROM core.session s
     JOIN core.contract c ON c.id = s.contract_id
@@ -290,7 +292,7 @@ CREATE OR REPLACE FUNCTION api.q_contracts(
     p_offset integer DEFAULT 0)
 RETURNS TABLE (
     id integer, contract_no text, provider_name text, subscriber_id integer, subscriber_name text,
-    subscriber_type text, connected_on date, connection_fee numeric, price_per_mb numeric,
+    subscriber_type text, connected_on date, connection_fee ref.d_money, price_per_mb ref.d_price_mb,
     ip_address text, closed_on date, state text, total_count bigint)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -310,7 +312,7 @@ BEGIN
            CASE WHEN ot.name = upper(ot.name) THEN ot.name || ' «' || p.name || '»'
                 ELSE '«' || p.name || '»' END,
            s.id, s.name::text, st.name::text,
-           c.connected_on, c.connection_fee::numeric, c.price_per_mb::numeric,
+           c.connected_on, c.connection_fee, c.price_per_mb,
            host(c.ip_address), c.closed_on,
            CASE WHEN c.closed_on IS NULL THEN 'Действует'
                 ELSE 'Расторгнут ' || to_char(c.closed_on, 'DD.MM.YYYY') END,
@@ -397,7 +399,8 @@ COMMENT ON FUNCTION api.q_subscribers(integer, boolean, text, integer, integer, 
 -- 9. Использование тарифов за период, включая неиспользованные (правое соединение сеансов с тарифами).
 -- Экран: «Статистика» → «Трафик по тарифам», табличная часть (руководитель, главный аналитик).
 -- Сеансы периода группируются по тарифу в подзапросе (не больше 10 строк) и только потом соединяются со
--- справочником тарифов — группировка до соединения, а не после.
+-- справочником тарифов — группировка до соединения, а не после. У неиспользованного тарифа правое соединение даёт
+-- NULL вместо итогов — coalesce показывает 0 (экран и диаграмма: «0 сеансов», а не пустая ячейка).
 DROP FUNCTION IF EXISTS api.q_tariff_usage(date, date, integer, integer, integer);
 CREATE OR REPLACE FUNCTION api.q_tariff_usage(
     p_from date,
@@ -406,7 +409,7 @@ CREATE OR REPLACE FUNCTION api.q_tariff_usage(
     p_limit integer DEFAULT 20,
     p_offset integer DEFAULT 0)
 RETURNS TABLE (
-    id integer, tariff_code text, tariff_name text, discount_pct numeric,
+    id integer, tariff_code text, tariff_name text, discount_pct ref.d_percent,
     sessions_count bigint, volume_mb numeric, revenue numeric, total_count bigint)
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -420,8 +423,8 @@ BEGIN
         RAISE EXCEPTION 'Укажите период' USING ERRCODE = 'P0001';
     END IF;
     RETURN QUERY
-    SELECT t.id::integer, t.code::text, t.name::text, t.discount_pct::numeric,
-           coalesce(u.sessions, 0), coalesce(u.volume_mb, 0)::numeric, coalesce(u.revenue, 0)::numeric,
+    SELECT t.id::integer, t.code::text, t.name::text, t.discount_pct,
+           coalesce(u.sessions, 0), coalesce(u.volume_mb, 0), coalesce(u.revenue, 0),
            count(*) OVER ()
     FROM (SELECT s.tariff_id, count(*) AS sessions, sum(s.volume_mb) AS volume_mb, sum(s.cost) AS revenue
           FROM core.session s
@@ -445,7 +448,9 @@ COMMENT ON FUNCTION api.q_tariff_usage(date, date, integer, integer, integer) IS
 -- Подзапрос не зависит от строки провайдера и вычисляется один раз (hashed SubPlan). Левое соединение с sec.app_user
 -- и IS NULL дало бы тот же отбор, но при выключенном флажке размножило бы строки — по строке на сотрудника.
 -- Ловушка NOT IN: у администраторов и аналитиков provider_id IS NULL, а «x NOT IN (…, NULL)» никогда не истинно —
--- без условия IS NOT NULL в подзапросе список был бы пуст (тест 12.9).
+-- без условия IS NOT NULL в подзапросе список был бы пуст (тест 12.11).
+-- У провайдера без договоров левое соединение даёт NULL вместо чисел — в колонках coalesce показывает 0; в отборе и
+-- сортировке NULL разобран явно (k.provider_id IS NULL — договоров нет; NULLS LAST — такие провайдеры в конце).
 DROP FUNCTION IF EXISTS api.q_providers(date, date, text, boolean, integer, integer);
 DROP FUNCTION IF EXISTS api.q_providers(date, date, text, boolean, boolean, integer, integer);
 CREATE OR REPLACE FUNCTION api.q_providers(
@@ -483,10 +488,10 @@ BEGIN
         WHERE c.provider_id = ANY (v_scope)
         GROUP BY c.provider_id) k ON k.provider_id = v.id
     WHERE (v_like IS NULL OR lower(v.name) LIKE v_like)
-      AND (NOT p_without_new OR coalesce(k.new_in_period, 0) = 0)
+      AND (NOT p_without_new OR k.provider_id IS NULL OR k.new_in_period = 0)
       AND (NOT p_without_staff
            OR v.id NOT IN (SELECT u.provider_id FROM sec.app_user u WHERE u.provider_id IS NOT NULL))
-    ORDER BY coalesce(k.active, 0) DESC, v.name
+    ORDER BY k.active DESC NULLS LAST, v.name
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0);
 END $$;
 COMMENT ON FUNCTION api.q_providers(date, date, text, boolean, boolean, integer, integer) IS

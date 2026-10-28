@@ -334,7 +334,7 @@ void ReportPage::build()
     m_table->setFixedHeight(h->sizeHint().height() + m_table->verticalHeader()->length() + 2 * m_table->frameWidth());
 }
 
-// 15б: выручка по периодам одного провайдера (руководитель; аналитик с отбором по провайдеру)
+// 15: выручка по периодам одного провайдера (руководитель; аналитик с отбором по провайдеру)
 void ReportPage::buildRevenue()
 {
     const QString provider = providerTitle();

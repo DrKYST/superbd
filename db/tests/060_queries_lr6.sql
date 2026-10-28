@@ -1,4 +1,4 @@
--- Тест 060. Запросы ЛР 6 (db/migrations/061_queries_aggregate.sql, запрос 16 — в 060): результат совпадает с
+-- Тест 060. Запросы ЛР 6 и запросы 20, 22 ТЗ курсового проекта (db/migrations/061_queries_aggregate.sql, запрос 16 — в 060; D31): результат совпадает с
 -- независимым расчётом суперпользователя, счётчики «Текущих дел» — со списками и отчётами, права — по ролям.
 -- Как в 020 и 050: проверки от имени пользователя (SET SESSION AUTHORIZATION), значения — через \gset и test.*.
 
@@ -13,7 +13,7 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- Какие запросы ЛР 6 доступны текущему пользователю: строка из 1 (выполнен), 0 (отказ 42501), x (другая ошибка).
--- Порядок: 11 v_user_groups, 15а v_revenue_items, 12, 13, 14, 15б, 17, «Крупнейшие абоненты».
+-- Порядок: 11 v_user_groups, 20 v_revenue_items, 12, 13, 14, 15, 22, «Крупнейшие абоненты».
 CREATE OR REPLACE FUNCTION pg_temp.lr6_rights()
 RETURNS text LANGUAGE plpgsql AS $$
 DECLARE
@@ -69,7 +69,7 @@ SELECT (SELECT count(*) FROM core.contract) + (SELECT count(*) FROM core.session
 -- 16: провайдеры без сотрудников (NOT EXISTS) и та же разность через NOT IN без отсечения NULL
 SELECT count(*) AS e16_free FROM core.provider p WHERE NOT EXISTS (SELECT 1 FROM sec.app_user u WHERE u.provider_id = p.id) \gset
 SELECT count(*) AS e16_null_trap FROM core.provider p WHERE p.id NOT IN (SELECT u.provider_id FROM sec.app_user u) \gset
--- 17: договоры, действующие на конец периода, у всех провайдеров
+-- 22: договоры, действующие на конец периода, у всех провайдеров
 SELECT count(*) AS e17_contracts FROM core.contract
 WHERE connected_on <= '2026-09-30' AND (closed_on IS NULL OR closed_on > '2026-09-30') \gset
 -- «Крупнейшие абоненты»: наибольшая выручка абонента «ДонНет» за 2026 год до сентября
@@ -127,7 +127,7 @@ SELECT pg_temp.lr6_rights() AS r_chief \gset
 SELECT coalesce(sum(contracts), 0) AS q12_chief FROM api.report_new_contracts('2026-07-01', '2026-09-30', 'quarter', :donnet_id) \gset
 SELECT count(*) AS q15_items FROM api.v_revenue_items \gset
 SELECT count(*) AS q15_items_union FROM (SELECT * FROM api.v_revenue_items UNION SELECT * FROM api.v_revenue_items) u \gset
--- 17: таблица
+-- 22: таблица
 SELECT count(*) FILTER (WHERE NOT is_total) AS q17_groups,
        sum(providers) FILTER (WHERE NOT is_total) AS q17_providers,
        sum(contracts) FILTER (WHERE NOT is_total) AS q17_contracts,
@@ -137,10 +137,10 @@ SELECT count(*) FILTER (WHERE NOT is_total) AS q17_groups,
        sum(share_pct) FILTER (WHERE NOT is_total) AS q17_share_sum,
        max(provider_group) FILTER (WHERE ord = 5) AS q17_other
 FROM api.report_provider_shares('2026-01-01', '2026-09-30', 4, NULL) \gset
--- 17: точки диаграммы — те же группы, сумма по точкам = «Итого»
+-- 22: точки диаграммы — те же группы, сумма по точкам = «Итого»
 SELECT count(DISTINCT provider_group) AS q17_series, count(DISTINCT period) AS q17_months, sum(revenue) AS q17_rev_points
 FROM api.report_provider_shares('2026-01-01', '2026-09-30', 4, 'month') WHERE period IS NOT NULL \gset
--- 17 с отбором «Тип абонента»: выручка «Итого» = отчёт 15б аналитика по всем провайдерам с тем же отбором
+-- 22 с отбором «Тип абонента»: выручка «Итого» = отчёт 15 аналитика по всем провайдерам с тем же отбором
 SELECT max(revenue) FILTER (WHERE is_total) AS q17_type_total
 FROM api.report_provider_shares('2026-01-01', '2026-09-30', 4, NULL, 5) \gset
 SELECT revenue AS q15_type_total FROM api.report_revenue('2026-01-01', '2026-09-30', 'month', NULL, 5) WHERE period IS NULL \gset
@@ -201,12 +201,12 @@ SELECT pg_temp.check('12.5 запрос 14 (WHERE + HAVING): список = ра
 SELECT pg_temp.check('12.6 счётчик «Договоры без сеансов более 30 дней» = список 14 (оператор и руководитель)',
     :t14_op = :q14_total AND :t14_mgr = :q14_mgr AND :q14_mgr = :q14_total,
     format('оператор %s, руководитель %s, список %s', :t14_op, :t14_mgr, :q14_total));
-SELECT pg_temp.check('12.7 запрос 15б: выручка за месяц = независимый расчёт = счётчик «Выручка за …» (тыс. руб.)',
+SELECT pg_temp.check('12.7 запрос 15: выручка за месяц = независимый расчёт = счётчик «Выручка за …» (тыс. руб.)',
     :q15_month = :e15_month AND :t15_mgr = round(:q15_month / 1000) AND :t15_chief = round(:q15_chief_month / 1000),
     format('отчёт %s, эталон %s, счётчик %s', :q15_month, :e15_month, :t15_mgr));
-SELECT pg_temp.check('12.8 запрос 15б (ROLLUP): «Итого» = сумма периодов по каждой колонке, выручка = подключения + трафик',
+SELECT pg_temp.check('12.8 запрос 15 (ROLLUP): «Итого» = сумма периодов по каждой колонке, выручка = подключения + трафик',
     :'q15_rollup' = 't' AND :q15_periods = 9, :q15_periods || ' периодов');
-SELECT pg_temp.check('12.9 запрос 15а (UNION ALL): строк столько же, сколько договоров и сеансов (ни одна операция не потеряна)',
+SELECT pg_temp.check('12.9 запрос 20 (UNION ALL): строк столько же, сколько договоров и сеансов (ни одна операция не потеряна)',
     :q15_items = :e15_items AND :q15_items_union <= :q15_items,
     format('UNION ALL %s, эталон %s, UNION %s', :q15_items, :e15_items, :q15_items_union));
 SELECT pg_temp.check('12.10 запрос 16 (NOT IN): провайдеры без сотрудников = расчёт через NOT EXISTS = счётчик; без флажка — все',
@@ -214,35 +214,35 @@ SELECT pg_temp.check('12.10 запрос 16 (NOT IN): провайдеры бе�
     format('список %s, эталон %s, счётчик %s, без отбора %s', :q16_total, :e16_free, :t16_adm, :q16_off));
 SELECT pg_temp.check('12.11 ловушка NOT IN: без «provider_id IS NOT NULL» в подзапросе разность пуста (NULL у администраторов)',
     :e16_null_trap = 0 AND :e16_free > 0, format('без отсечения NULL %s, с отсечением %s', :e16_null_trap, :e16_free));
-SELECT pg_temp.check('12.12 запрос 17: 4 провайдера и «Прочие», в группах все провайдеры, договоры = действующие на конец периода',
+SELECT pg_temp.check('12.12 запрос 22: 4 провайдера и «Прочие», в группах все провайдеры, договоры = действующие на конец периода',
     :q17_groups = 5 AND :q17_providers = :providers_all AND :q17_contracts = :e17_contracts
     AND :'q17_other' = format('Прочие (%s провайдеров)', :providers_all - 4),
     format('групп %s, провайдеров %s, договоров %s из %s, «%s»', :q17_groups, :q17_providers, :q17_contracts, :e17_contracts, :'q17_other'));
-SELECT pg_temp.check('12.13 запрос 17: выручка групп = «Итого», доля «Итого» 100 %, доли после округления — 100 ± 0,3',
+SELECT pg_temp.check('12.13 запрос 22: выручка групп = «Итого», доля «Итого» 100 %, доли после округления — 100 ± 0,3',
     :q17_rev_groups = :q17_rev_total AND :q17_share_total = 100 AND abs(:q17_share_sum - 100) <= 0.3,
     format('сумма долей %s', :q17_share_sum));
-SELECT pg_temp.check('12.14 запрос 17: ряды диаграммы — те же 5 групп по 9 месяцам, сумма точек = «Итого»',
+SELECT pg_temp.check('12.14 запрос 22: ряды диаграммы — те же 5 групп по 9 месяцам, сумма точек = «Итого»',
     :q17_series = 5 AND :q17_months = 9 AND :q17_rev_points = :q17_rev_total,
     format('рядов %s, месяцев %s', :q17_series, :q17_months));
-SELECT pg_temp.check('12.14а запрос 17 с отбором «Тип абонента» (вуз): «Итого» = выручка отчёта 15б с тем же отбором',
+SELECT pg_temp.check('12.14а запрос 22 с отбором «Тип абонента» (вуз): «Итого» = выручка отчёта 15 с тем же отбором',
     :q17_type_total = :q15_type_total AND :q17_type_total > 0, format('%s и %s', :q17_type_total, :q15_type_total));
 SELECT pg_temp.check('12.15 «Крупнейшие абоненты»: первые 5 по убыванию выручки, первый = независимый расчёт по провайдеру',
     :top_rows = 5 AND :'top_sorted' = 't' AND :top1 = :e_top1, format('%s и %s', :top1, :e_top1));
 SELECT pg_temp.check('12.16 параметры отчёта: неверная периодичность и перевёрнутый период — понятные ошибки',
     current_setting('test.bad_grain') LIKE 'P0001 Периодичность%' AND current_setting('test.bad_period') LIKE 'P0001 Дата окончания%',
     current_setting('test.bad_grain') || '; ' || current_setting('test.bad_period'));
-SELECT pg_temp.check('12.17 права: каждой роли — только запросы её экранов (11, 15а, 12, 13, 14, 15б, 17, крупнейшие)',
+SELECT pg_temp.check('12.17 права: каждой роли — только запросы её экранов (11, 20, 12, 13, 14, 15, 22, крупнейшие)',
     :'r_op' = '00001000' AND :'r_mgr' = '01101101' AND :'r_chief' = '01100111'
     AND :'r_adm' = '10010000' AND :'r_dba' = '10000000',
     format('оператор %s, руководитель %s, аналитик %s, администратор %s, администратор БД %s',
            :'r_op', :'r_mgr', :'r_chief', :'r_adm', :'r_dba'));
 
--- 12.18 Период без операций: ROLLUP всё равно даёт строку «Итого» — в ней нули, а не NULL (coalesce у сумм 15б).
+-- 12.18 Период без операций: ROLLUP всё равно даёт строку «Итого» — в ней нули, а не NULL (coalesce у сумм 15).
 SET SESSION AUTHORIZATION mgr_donnet;
 SELECT count(*) AS q15_empty_rows,
        coalesce(bool_and(period IS NULL AND period_title = 'Итого' AND new_contracts = 0 AND volume_mb = 0
                          AND connection_fees = 0 AND traffic_fees = 0 AND revenue = 0), false) AS q15_empty_ok
 FROM api.report_revenue('2030-01-01', '2030-01-31') \gset
 RESET SESSION AUTHORIZATION;
-SELECT pg_temp.check('12.18 запрос 15б за период без операций: одна строка «Итого» с нулями',
+SELECT pg_temp.check('12.18 запрос 15 за период без операций: одна строка «Итого» с нулями',
     :q15_empty_rows = 1 AND :'q15_empty_ok' = 't', format('строк %s', :q15_empty_rows));

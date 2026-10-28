@@ -20,7 +20,7 @@ SELECT name, subscriber_type, city, phone, providers, total_count FROM api.q_sha
  Андреев Михаил Игоревич         | Частное лицо               | Мариуполь  | +7 949 808-51-29 |         2 |         590
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 0.017 ms  plan:
+duration: 0.014 ms  plan:
 Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
 Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -30,7 +30,7 @@ Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
           Rows Removed by Filter: 7
           Buffers: shared hit=1
 
-duration: 11.709 ms  plan:
+duration: 13.162 ms  plan:
 Query Text: SELECT s.id, s.name::text, st.name::text, ci.name::text, s.address::text, s.phone::text,
            count(DISTINCT c.provider_id), count(*) OVER ()
     FROM core.subscriber s
@@ -41,36 +41,98 @@ Query Text: SELECT s.id, s.name::text, st.name::text, ci.name::text, s.address::
     HAVING count(DISTINCT c.provider_id) >= p_min_providers
     ORDER BY s.name, s.id
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
-Limit  (cost=2018.06..2018.08 rows=10 width=231) (actual rows=10.00 loops=1)
-  Buffers: shared hit=356
-  ->  Sort  (cost=2018.06..2028.06 rows=4001 width=231) (actual rows=10.00 loops=1)
+Limit  (cost=2092.29..2092.32 rows=10 width=231) (actual rows=10.00 loops=1)
+  Buffers: shared hit=370
+  ->  Sort  (cost=2092.29..2102.29 rows=4001 width=231) (actual rows=10.00 loops=1)
         Sort Key: ((s.name)::text), s.id
         Sort Method: top-N heapsort  Memory: 30kB
-        Buffers: shared hit=356
-        ->  WindowAgg  (cost=1931.51..1931.60 rows=4001 width=231) (actual rows=590.00 loops=1)
+        Buffers: shared hit=370
+        ->  WindowAgg  (cost=2005.74..2005.83 rows=4001 width=231) (actual rows=590.00 loops=1)
               Window: w1 AS ()
               Storage: Memory  Maximum Storage: 125kB
-              Buffers: shared hit=353
-              ->  GroupAggregate  (cost=1581.53..1881.58 rows=4001 width=159) (actual rows=590.00 loops=1)
+              Buffers: shared hit=367
+              ->  GroupAggregate  (cost=1655.72..1955.82 rows=4001 width=159) (actual rows=590.00 loops=1)
                     Group Key: s.id, st.id, ci.id
                     Filter: (count(DISTINCT c.provider_id) >= 2)
                     Rows Removed by Filter: 7012
-                    Buffers: shared hit=353
-                    ->  Sort  (cost=1581.53..1611.54 rows=12002 width=155) (actual rows=12002.00 loops=1)
+                    Buffers: shared hit=367
+                    ->  Sort  (cost=1655.72..1685.73 rows=12004 width=155) (actual rows=12002.00 loops=1)
                           Sort Key: s.id, st.id, ci.id, c.provider_id
                           Sort Method: quicksort  Memory: 2453kB
-                          Buffers: shared hit=353
-                          ->  Hash Join  (cost=326.52..768.34 rows=12002 width=155) (actual rows=12002.00 loops=1)
+                          Buffers: shared hit=367
+                          ->  Hash Join  (cost=326.52..842.37 rows=12004 width=155) (actual rows=12002.00 loops=1)
                                 Hash Cond: (s.city_id = ci.id)
-                                Buffers: shared hit=350
-                                ->  Hash Join  (cost=325.25..724.44 rows=12002 width=138) (actual rows=12002.00 loops=1)
+                                Buffers: shared hit=364
+                                ->  Hash Join  (cost=325.25..798.47 rows=12004 width=138) (actual rows=12002.00 loops=1)
                                       Hash Cond: (s.subscriber_type_id = st.id)
-                                      Buffers: shared hit=349
-                                      ->  Hash Join  (cost=324.00..679.55 rows=12002 width=111) (actual rows=12002.00 loops=1)
+                                      Buffers: shared hit=363
+                                      ->  Hash Join  (cost=324.00..753.57 rows=12004 width=111) (actual rows=12002.00 loops=1)
                                             Hash Cond: (c.subscriber_id = s.id)
-                                            Buffers: shared hit=348
-                                            ->  Seq Scan on contract c  (cost=0.00..324.02 rows=12002 width=8) (actual rows=12002.00 loops=1)
-                                                  Buffers: shared hit=204
+                                            Buffers: shared hit=362
+                                            ->  Append  (cost=0.00..398.04 rows=12004 width=8) (actual rows=12002.00 loops=1)
+                                                  Buffers: shared hit=218
+                                                  ->  Seq Scan on contract_p1 c_1  (cost=0.00..11.09 rows=409 width=8) (actual rows=409.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p2 c_2  (cost=0.00..10.79 rows=379 width=8) (actual rows=379.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p3 c_3  (cost=0.00..10.79 rows=379 width=8) (actual rows=379.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p4 c_4  (cost=0.00..10.79 rows=379 width=8) (actual rows=379.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p5 c_5  (cost=0.00..12.22 rows=422 width=8) (actual rows=422.00 loops=1)
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p6 c_6  (cost=0.00..12.27 rows=427 width=8) (actual rows=427.00 loops=1)
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p7 c_7  (cost=0.00..11.15 rows=415 width=8) (actual rows=415.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p8 c_8  (cost=0.00..12.38 rows=438 width=8) (actual rows=438.00 loops=1)
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p9 c_9  (cost=0.00..11.10 rows=410 width=8) (actual rows=410.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p10 c_10  (cost=0.00..11.03 rows=403 width=8) (actual rows=403.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p11 c_11  (cost=0.00..11.07 rows=407 width=8) (actual rows=407.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p12 c_12  (cost=0.00..10.80 rows=380 width=8) (actual rows=380.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p13 c_13  (cost=0.00..12.47 rows=447 width=8) (actual rows=447.00 loops=1)
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p14 c_14  (cost=0.00..10.88 rows=388 width=8) (actual rows=388.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p15 c_15  (cost=0.00..10.76 rows=376 width=8) (actual rows=376.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p16 c_16  (cost=0.00..10.61 rows=361 width=8) (actual rows=361.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p17 c_17  (cost=0.00..12.21 rows=421 width=8) (actual rows=421.00 loops=1)
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p18 c_18  (cost=0.00..10.79 rows=379 width=8) (actual rows=379.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p19 c_19  (cost=0.00..12.16 rows=416 width=8) (actual rows=416.00 loops=1)
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p20 c_20  (cost=0.00..11.01 rows=401 width=8) (actual rows=401.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p21 c_21  (cost=0.00..10.64 rows=364 width=8) (actual rows=364.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p22 c_22  (cost=0.00..12.49 rows=449 width=8) (actual rows=449.00 loops=1)
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p23 c_23  (cost=0.00..11.10 rows=410 width=8) (actual rows=410.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p24 c_24  (cost=0.00..10.76 rows=376 width=8) (actual rows=376.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p25 c_25  (cost=0.00..11.10 rows=410 width=8) (actual rows=410.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p26 c_26  (cost=0.00..10.66 rows=366 width=8) (actual rows=366.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p27 c_27  (cost=0.00..12.34 rows=434 width=8) (actual rows=434.00 loops=1)
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p28 c_28  (cost=0.00..10.74 rows=374 width=8) (actual rows=374.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p29 c_29  (cost=0.00..10.97 rows=397 width=8) (actual rows=397.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p30 c_30  (cost=0.00..10.85 rows=385 width=8) (actual rows=385.00 loops=1)
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p31 c_31  (cost=0.00..0.00 rows=1 width=8) (actual rows=0.00 loops=1)
+                                                  ->  Seq Scan on contract_default c_32  (cost=0.00..0.00 rows=1 width=8) (actual rows=0.00 loops=1)
                                             ->  Hash  (cost=224.00..224.00 rows=8000 width=107) (actual rows=8000.00 loops=1)
                                                   Buckets: 8192  Batches: 1  Memory Usage: 1171kB
                                                   Buffers: shared hit=144

@@ -1,0 +1,334 @@
+Запрос 20 (запрос с объединением UNION ALL). Доходные операции своего провайдера с начала текущего месяца
+Роль: mgr_donnet
+Где используется: основа отчётов «Выручка по периодам» (15), «Доли провайдеров» (22), «Крупнейшие абоненты»
+
+-- SQL
+SELECT at, kind, amount, volume_mb FROM api.v_revenue_items WHERE at >= date_trunc('month', current_date) ORDER BY at DESC LIMIT 10;
+
+-- Результат (первые строки)
+              at               |  kind  | amount | volume_mb 
+-------------------------------+--------+--------+-----------
+ 2026-10-29 01:49:43.878582+03 | трафик |  47.78 |  1075.000
+ 2026-10-29 01:45:20.523438+03 | трафик |  28.61 |   938.000
+ 2026-10-29 01:40:57.168295+03 | трафик |  57.07 |   801.000
+ 2026-10-29 01:36:33.813152+03 | трафик |  43.33 |   664.000
+ 2026-10-29 01:32:10.458009+03 | трафик |  33.99 |   527.000
+ 2026-10-29 01:27:47.102865+03 | трафик |  16.19 |   390.000
+ 2026-10-29 01:23:23.747722+03 | трафик |  17.67 |   253.000
+ 2026-10-29 01:19:00.392579+03 | трафик |   7.35 |   116.000
+ 2026-10-29 01:14:37.037436+03 | трафик | 150.83 |  2379.000
+ 2026-10-29 01:10:13.682292+03 | трафик | 103.36 |  2242.000
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 26.921 ms  plan:
+Query Text: SELECT at, kind, amount, volume_mb FROM api.v_revenue_items WHERE at >= date_trunc('month', current_date) ORDER BY at DESC LIMIT 10;
+Limit  (cost=4753.28..4753.31 rows=10 width=104) (actual rows=10.00 loops=1)
+  Buffers: shared hit=1780
+  ->  Sort  (cost=4753.28..4827.99 rows=29883 width=104) (actual rows=10.00 loops=1)
+        Sort Key: v_revenue_items.at DESC
+        Sort Method: top-N heapsort  Memory: 25kB
+        Buffers: shared hit=1780
+        ->  Subquery Scan on v_revenue_items  (cost=324.26..4107.52 rows=29883 width=104) (actual rows=922.00 loops=1)
+              Buffers: shared hit=1777
+              ->  Append  (cost=324.26..3808.69 rows=29883 width=114) (actual rows=922.00 loops=1)
+                    Buffers: shared hit=1777
+                    ->  Subquery Scan on "*SELECT* 1"  (cost=324.26..1052.86 rows=4001 width=86) (actual rows=10.00 loops=1)
+                          Buffers: shared hit=1140
+                          ->  Hash Join  (cost=324.26..1002.85 rows=4001 width=58) (actual rows=10.00 loops=1)
+                                Hash Cond: (c.subscriber_id = s.id)
+                                Buffers: shared hit=1140
+                                InitPlan 1
+                                  ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                        Buffers: shared hit=778
+                                ->  Append  (cost=0.00..658.08 rows=4001 width=16) (actual rows=10.00 loops=1)
+                                      Buffers: shared hit=996
+                                      ->  Seq Scan on contract_p1 c_1  (cost=0.00..21.32 rows=136 width=16) (actual rows=10.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 399
+                                            Buffers: shared hit=785
+                                      ->  Seq Scan on contract_p2 c_2  (cost=0.00..20.27 rows=126 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 379
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p3 c_3  (cost=0.00..20.27 rows=126 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 379
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p4 c_4  (cost=0.00..20.27 rows=126 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 379
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p5 c_5  (cost=0.00..22.77 rows=141 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 422
+                                            Buffers: shared hit=8
+                                      ->  Seq Scan on contract_p6 c_6  (cost=0.00..22.95 rows=142 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 427
+                                            Buffers: shared hit=8
+                                      ->  Seq Scan on contract_p7 c_7  (cost=0.00..21.53 rows=138 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 415
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p8 c_8  (cost=0.00..23.33 rows=146 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 438
+                                            Buffers: shared hit=8
+                                      ->  Seq Scan on contract_p9 c_9  (cost=0.00..21.35 rows=137 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 410
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p10 c_10  (cost=0.00..21.11 rows=134 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 403
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p11 c_11  (cost=0.00..21.25 rows=136 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 407
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p12 c_12  (cost=0.00..20.30 rows=127 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 380
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p13 c_13  (cost=0.00..23.65 rows=149 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 447
+                                            Buffers: shared hit=8
+                                      ->  Seq Scan on contract_p14 c_14  (cost=0.00..20.58 rows=129 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 388
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p15 c_15  (cost=0.00..20.16 rows=125 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 376
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p16 c_16  (cost=0.00..19.64 rows=120 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 361
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p17 c_17  (cost=0.00..22.73 rows=140 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 421
+                                            Buffers: shared hit=8
+                                      ->  Seq Scan on contract_p18 c_18  (cost=0.00..20.27 rows=126 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 379
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p19 c_19  (cost=0.00..22.56 rows=139 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 416
+                                            Buffers: shared hit=8
+                                      ->  Seq Scan on contract_p20 c_20  (cost=0.00..21.04 rows=134 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 401
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p21 c_21  (cost=0.00..19.74 rows=121 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 364
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p22 c_22  (cost=0.00..23.72 rows=150 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 449
+                                            Buffers: shared hit=8
+                                      ->  Seq Scan on contract_p23 c_23  (cost=0.00..21.35 rows=137 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 410
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p24 c_24  (cost=0.00..20.16 rows=125 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 376
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p25 c_25  (cost=0.00..21.35 rows=137 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 410
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p26 c_26  (cost=0.00..19.81 rows=122 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 366
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p27 c_27  (cost=0.00..23.19 rows=145 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 434
+                                            Buffers: shared hit=8
+                                      ->  Seq Scan on contract_p28 c_28  (cost=0.00..20.09 rows=125 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 374
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p29 c_29  (cost=0.00..20.90 rows=132 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 397
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p30 c_30  (cost=0.00..20.48 rows=128 width=16) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                            Rows Removed by Filter: 385
+                                            Buffers: shared hit=7
+                                      ->  Seq Scan on contract_p31 c_31  (cost=0.00..0.00 rows=1 width=44) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                      ->  Seq Scan on contract_default c_32  (cost=0.00..0.00 rows=1 width=44) (actual rows=0.00 loops=1)
+                                            Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
+                                ->  Hash  (cost=224.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                      Buckets: 8192  Batches: 1  Memory Usage: 377kB
+                                      Buffers: shared hit=144
+                                      ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                            Buffers: shared hit=144
+                    ->  Subquery Scan on "*SELECT* 2"  (cost=1054.20..2606.42 rows=25882 width=88) (actual rows=912.00 loops=1)
+                          Buffers: shared hit=637
+                          ->  Hash Join  (cost=1054.20..2347.60 rows=25882 width=62) (actual rows=912.00 loops=1)
+                                Hash Cond: (se.contract_id = c_33.id)
+                                Buffers: shared hit=637
+                                InitPlan 2
+                                  ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                        Buffers: shared hit=32
+                                ->  Append  (cost=0.29..937.83 rows=25878 width=24) (actual rows=25845.00 loops=1)
+                                      Buffers: shared hit=243
+                                      Subplans Removed: 11
+                                      ->  Seq Scan on session_2026_q4 se_1  (cost=0.00..758.90 rows=25845 width=24) (actual rows=25845.00 loops=1)
+                                            Filter: (started_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))
+                                            Buffers: shared hit=242
+                                      ->  Seq Scan on session_2027_q1 se_2  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
+                                            Filter: (started_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))
+                                      ->  Seq Scan on session_2027_q2 se_3  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
+                                            Filter: (started_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))
+                                      ->  Seq Scan on session_2027_q3 se_4  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
+                                            Filter: (started_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))
+                                      ->  Seq Scan on session_2027_q4 se_5  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
+                                            Filter: (started_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))
+                                      ->  Seq Scan on session_default se_6  (cost=0.00..2.08 rows=18 width=76) (actual rows=0.00 loops=1)
+                                            Filter: (started_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))
+                                            Buffers: shared hit=1
+                                ->  Hash  (cost=903.60..903.60 rows=12004 width=14) (actual rows=409.00 loops=1)
+                                      Buckets: 16384  Batches: 1  Memory Usage: 147kB
+                                      Buffers: shared hit=394
+                                      ->  Hash Join  (cost=324.00..903.60 rows=12004 width=14) (actual rows=409.00 loops=1)
+                                            Hash Cond: (c_33.subscriber_id = sb.id)
+                                            Buffers: shared hit=394
+                                            ->  Append  (cost=0.00..548.07 rows=12004 width=12) (actual rows=409.00 loops=1)
+                                                  Buffers: shared hit=250
+                                                  ->  Seq Scan on contract_p1 c_34  (cost=0.00..16.20 rows=409 width=12) (actual rows=409.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Buffers: shared hit=39
+                                                  ->  Seq Scan on contract_p2 c_35  (cost=0.00..15.53 rows=379 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 379
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p3 c_36  (cost=0.00..15.53 rows=379 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 379
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p4 c_37  (cost=0.00..15.53 rows=379 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 379
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p5 c_38  (cost=0.00..17.49 rows=422 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 422
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p6 c_39  (cost=0.00..17.61 rows=427 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 427
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p7 c_40  (cost=0.00..16.34 rows=415 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 415
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p8 c_41  (cost=0.00..17.86 rows=438 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 438
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p9 c_42  (cost=0.00..16.23 rows=410 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 410
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p10 c_43  (cost=0.00..16.07 rows=403 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 403
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p11 c_44  (cost=0.00..16.16 rows=407 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 407
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p12 c_45  (cost=0.00..15.55 rows=380 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 380
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p13 c_46  (cost=0.00..18.06 rows=447 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 447
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p14 c_47  (cost=0.00..15.73 rows=388 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 388
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p15 c_48  (cost=0.00..15.46 rows=376 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 376
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p16 c_49  (cost=0.00..15.12 rows=361 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 361
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p17 c_50  (cost=0.00..17.47 rows=421 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 421
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p18 c_51  (cost=0.00..15.53 rows=379 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 379
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p19 c_52  (cost=0.00..17.36 rows=416 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 416
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p20 c_53  (cost=0.00..16.02 rows=401 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 401
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p21 c_54  (cost=0.00..15.19 rows=364 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 364
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p22 c_55  (cost=0.00..18.10 rows=449 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 449
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p23 c_56  (cost=0.00..16.23 rows=410 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 410
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p24 c_57  (cost=0.00..15.46 rows=376 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 376
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p25 c_58  (cost=0.00..16.23 rows=410 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 410
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p26 c_59  (cost=0.00..15.23 rows=366 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 366
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p27 c_60  (cost=0.00..17.77 rows=434 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 434
+                                                        Buffers: shared hit=8
+                                                  ->  Seq Scan on contract_p28 c_61  (cost=0.00..15.41 rows=374 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 374
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p29 c_62  (cost=0.00..15.93 rows=397 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 397
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p30 c_63  (cost=0.00..15.66 rows=385 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                        Rows Removed by Filter: 385
+                                                        Buffers: shared hit=7
+                                                  ->  Seq Scan on contract_p31 c_64  (cost=0.00..0.00 rows=1 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                  ->  Seq Scan on contract_default c_65  (cost=0.00..0.00 rows=1 width=12) (actual rows=0.00 loops=1)
+                                                        Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                            ->  Hash  (cost=224.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                                  Buckets: 8192  Batches: 1  Memory Usage: 377kB
+                                                  Buffers: shared hit=144
+                                                  ->  Seq Scan on subscriber sb  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                                        Buffers: shared hit=144

@@ -8,31 +8,31 @@ SELECT period_title, subscriber_type, contracts FROM api.report_new_contracts('2
 -- Результат (первые строки)
  period_title |        subscriber_type         | contracts 
 --------------+--------------------------------+-----------
- 2024         | Частное лицо                   |      3033
- 2024         | Индивидуальный предприниматель |       198
- 2024         | Школа                          |       162
- 2024         | Колледж                        |        87
- 2024         | Вуз                            |        85
- 2024         | Предприятие                    |       350
- 2024         | Государственное учреждение     |       122
+ 2024         | Частное лицо                   |      2968
+ 2024         | Индивидуальный предприниматель |       194
+ 2024         | Школа                          |       157
+ 2024         | Колледж                        |        86
+ 2024         | Вуз                            |        84
+ 2024         | Предприятие                    |       340
+ 2024         | Государственное учреждение     |       120
  2024         | Библиотека                     |        42
- 2024         | Больница                       |        48
- 2024         | Интернет-кафе                  |        94
+ 2024         | Больница                       |        45
+ 2024         | Интернет-кафе                  |        93
  2024         | Общественная организация       |        68
- 2025         | Частное лицо                   |      3123
- 2025         | Индивидуальный предприниматель |       202
- 2025         | Школа                          |       213
- 2025         | Колледж                        |        80
- 2025         | Вуз                            |        86
- 2025         | Предприятие                    |       321
- 2025         | Государственное учреждение     |       147
- 2025         | Библиотека                     |        39
- 2025         | Больница                       |        50
- 2025         | Интернет-кафе                  |        79
- 2025         | Общественная организация       |        85
+ 2025         | Частное лицо                   |      3054
+ 2025         | Индивидуальный предприниматель |       199
+ 2025         | Школа                          |       208
+ 2025         | Колледж                        |        79
+ 2025         | Вуз                            |        82
+ 2025         | Предприятие                    |       316
+ 2025         | Государственное учреждение     |       141
+ 2025         | Библиотека                     |        38
+ 2025         | Больница                       |        52
+ 2025         | Интернет-кафе                  |        77
+ 2025         | Общественная организация       |        80
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 0.013 ms  plan:
+duration: 0.029 ms  plan:
 Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
 Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -42,7 +42,7 @@ Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
           Rows Removed by Filter: 7
           Buffers: shared hit=1
 
-duration: 0.025 ms  plan:
+duration: 0.019 ms  plan:
 Query Text: ARRAY(SELECT p.id FROM core.provider p ORDER BY p.id)
 Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -54,7 +54,7 @@ Result  (cost=2.16..2.17 rows=1 width=32) (actual rows=1.00 loops=1)
           ->  Seq Scan on provider p  (cost=0.00..1.31 rows=31 width=4) (actual rows=31.00 loops=1)
                 Buffers: shared hit=1
 
-duration: 0.009 ms  plan:
+duration: 0.008 ms  plan:
 Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
 Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -64,7 +64,7 @@ Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
           Rows Removed by Filter: 7
           Buffers: shared hit=1
 
-duration: 6.404 ms  plan:
+duration: 7.157 ms  plan:
 Query Text: SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer, st.name::text, k.contracts
     FROM (SELECT date_trunc(p_grain, c.connected_on::timestamp)::date AS period, s.subscriber_type_id,
                  count(*) AS contracts
@@ -74,24 +74,144 @@ Query Text: SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer
           GROUP BY 1, s.subscriber_type_id) k
     JOIN ref.subscriber_type st ON st.id = k.subscriber_type_id
     ORDER BY k.period, st.id
-Sort  (cost=1328.09..1329.29 rows=479 width=82) (actual rows=22.00 loops=1)
+Sort  (cost=1376.25..1377.43 rows=470 width=82) (actual rows=22.00 loops=1)
   Sort Key: ((date_trunc('year'::text, (c.connected_on)::timestamp without time zone))::date), st.id
   Sort Method: quicksort  Memory: 26kB
-  Buffers: shared hit=414
-  ->  Hash Join  (cost=922.91..1306.76 rows=479 width=82) (actual rows=22.00 loops=1)
+  Buffers: shared hit=428
+  ->  Hash Join  (cost=978.94..1355.39 rows=470 width=82) (actual rows=22.00 loops=1)
         Hash Cond: (s.subscriber_type_id = st.id)
-        Buffers: shared hit=408
-        ->  HashAggregate  (cost=921.66..1074.10 rows=8711 width=14) (actual rows=22.00 loops=1)
+        Buffers: shared hit=422
+        ->  HashAggregate  (cost=977.69..1127.16 rows=8541 width=14) (actual rows=22.00 loops=1)
               Group Key: (date_trunc('year'::text, (c.connected_on)::timestamp without time zone))::date, s.subscriber_type_id
               Batches: 1  Memory Usage: 289kB
-              Buffers: shared hit=348
-              ->  Hash Join  (cost=324.08..856.33 rows=8711 width=6) (actual rows=8714.00 loops=1)
+              Buffers: shared hit=362
+              ->  Hash Join  (cost=324.08..913.64 rows=8541 width=6) (actual rows=8523.00 loops=1)
                     Hash Cond: (c.subscriber_id = s.id)
-                    Buffers: shared hit=348
-                    ->  Seq Scan on contract c  (cost=0.08..444.12 rows=8711 width=8) (actual rows=8714.00 loops=1)
-                          Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
-                          Rows Removed by Filter: 3288
-                          Buffers: shared hit=204
+                    Buffers: shared hit=362
+                    ->  Append  (cost=0.08..503.15 rows=8541 width=8) (actual rows=8523.00 loops=1)
+                          Buffers: shared hit=218
+                          ->  Seq Scan on contract_p1 c_1  (cost=0.08..15.26 rows=300 width=8) (actual rows=299.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 110
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p2 c_2  (cost=0.08..14.66 rows=265 width=8) (actual rows=264.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 115
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p3 c_3  (cost=0.08..14.66 rows=276 width=8) (actual rows=275.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 104
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p4 c_4  (cost=0.08..14.66 rows=267 width=8) (actual rows=266.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 113
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p5 c_5  (cost=0.08..16.52 rows=302 width=8) (actual rows=301.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 121
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p6 c_6  (cost=0.08..16.62 rows=314 width=8) (actual rows=315.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 112
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p7 c_7  (cost=0.08..15.38 rows=308 width=8) (actual rows=308.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 107
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p8 c_8  (cost=0.08..16.84 rows=300 width=8) (actual rows=298.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 140
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p9 c_9  (cost=0.08..15.28 rows=303 width=8) (actual rows=303.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 107
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p10 c_10  (cost=0.08..15.14 rows=272 width=8) (actual rows=271.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 132
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p11 c_11  (cost=0.08..15.22 rows=284 width=8) (actual rows=283.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 124
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p12 c_12  (cost=0.08..14.68 rows=273 width=8) (actual rows=271.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 109
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p13 c_13  (cost=0.08..17.02 rows=335 width=8) (actual rows=335.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 112
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p14 c_14  (cost=0.08..14.84 rows=286 width=8) (actual rows=286.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 102
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p15 c_15  (cost=0.08..14.60 rows=254 width=8) (actual rows=253.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 123
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p16 c_16  (cost=0.08..14.30 rows=250 width=8) (actual rows=250.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 111
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p17 c_17  (cost=0.08..16.50 rows=314 width=8) (actual rows=313.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 108
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p18 c_18  (cost=0.08..14.66 rows=266 width=8) (actual rows=266.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 113
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p19 c_19  (cost=0.08..16.40 rows=300 width=8) (actual rows=299.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 117
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p20 c_20  (cost=0.08..15.10 rows=280 width=8) (actual rows=279.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 122
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p21 c_21  (cost=0.08..14.36 rows=255 width=8) (actual rows=256.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 108
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p22 c_22  (cost=0.08..17.06 rows=311 width=8) (actual rows=311.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 138
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p23 c_23  (cost=0.08..15.28 rows=291 width=8) (actual rows=290.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 120
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p24 c_24  (cost=0.08..14.60 rows=272 width=8) (actual rows=271.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 105
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p25 c_25  (cost=0.08..15.28 rows=283 width=8) (actual rows=283.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 127
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p26 c_26  (cost=0.08..14.40 rows=258 width=8) (actual rows=258.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 108
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p27 c_27  (cost=0.08..16.76 rows=305 width=8) (actual rows=305.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 129
+                                Buffers: shared hit=8
+                          ->  Seq Scan on contract_p28 c_28  (cost=0.08..14.56 rows=260 width=8) (actual rows=259.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 115
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p29 c_29  (cost=0.08..15.02 rows=270 width=8) (actual rows=270.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 127
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p30 c_30  (cost=0.08..14.78 rows=286 width=8) (actual rows=285.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
+                                Rows Removed by Filter: 100
+                                Buffers: shared hit=7
+                          ->  Seq Scan on contract_p31 c_31  (cost=0.08..0.08 rows=1 width=8) (actual rows=0.00 loops=1)
+                                Filter: ((connected_on >= '2024-01-01'::date) AND (connected_on <= '2025-12-31'::date) AND (provider_id = ANY ('{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31}'::integer[])))
                     ->  Hash  (cost=224.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
                           Buckets: 8192  Batches: 1  Memory Usage: 377kB
                           Buffers: shared hit=144

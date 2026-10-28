@@ -1,0 +1,117 @@
+Запрос 23 (запрос с подзапросом и операциями над итоговыми данными). Абоненты своего провайдера с трафиком выше среднего за III квартал 2026
+Роль: mgr_donnet
+Где используется: подраздел 4.7 ПЗ (экрана нет, D23)
+
+-- SQL
+SELECT name, subscriber_type, volume_mb, avg_mb, above_pct, total_count FROM api.q_subscribers_above_avg('2026-07-01', '2026-09-30');
+
+-- Результат (первые строки)
+              name              |      subscriber_type       | volume_mb |  avg_mb  | above_pct | total_count 
+--------------------------------+----------------------------+-----------+----------+-----------+-------------
+ Кузнецов Андрей Дмитриевич     | Частное лицо               | 23341.773 | 4963.397 |     370.3 |         111
+ Алексеев Евгений Викторович    | Частное лицо               | 22492.439 | 4963.397 |     353.2 |         111
+ Коваленко Наталья Ивановна     | Частное лицо               | 17858.818 | 4963.397 |     259.8 |         111
+ Борисов Владислав Сергеевич    | Частное лицо               | 15831.176 | 4963.397 |     219.0 |         111
+ Волкова Юлия Викторовна        | Частное лицо               | 15358.850 | 4963.397 |     209.4 |         111
+ Степанова Марина Олеговна      | Частное лицо               | 15227.362 | 4963.397 |     206.8 |         111
+ Козлова Марина Михайловна      | Частное лицо               | 14753.096 | 4963.397 |     197.2 |         111
+ Яковлева Юлия Ивановна         | Частное лицо               | 13791.502 | 4963.397 |     177.9 |         111
+ Музыкальная академия           | Вуз                        | 13775.535 | 4963.397 |     177.5 |         111
+ Григорьева Екатерина Андреевна | Частное лицо               | 13606.699 | 4963.397 |     174.1 |         111
+ Михайлова Наталья Дмитриевна   | Частное лицо               | 12511.517 | 4963.397 |     152.1 |         111
+ Смирнов Юрий Олегович          | Частное лицо               | 12065.134 | 4963.397 |     143.1 |         111
+ Центр занятости № 16           | Государственное учреждение | 11679.478 | 4963.397 |     135.3 |         111
+ Попова Оксана Петровна         | Частное лицо               | 11382.339 | 4963.397 |     129.3 |         111
+ Кравченко Павел Михайлович     | Частное лицо               | 11371.760 | 4963.397 |     129.1 |         111
+ Лебедева Оксана Сергеевна      | Частное лицо               | 11141.829 | 4963.397 |     124.5 |         111
+ Коваленко Игорь Викторович     | Частное лицо               | 11110.467 | 4963.397 |     123.8 |         111
+ Кравченко Юрий Петрович        | Частное лицо               | 10986.233 | 4963.397 |     121.3 |         111
+ Сидорова Юлия Алексеевна       | Частное лицо               | 10965.261 | 4963.397 |     120.9 |         111
+ Николаев Олег Сергеевич        | Частное лицо               | 10706.571 | 4963.397 |     115.7 |         111
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 14.510 ms  plan:
+Query Text: WITH t AS (            -- итог по абоненту: трафик за период у видимых провайдеров
+        SELECT c.subscriber_id, sum(se.volume_mb) AS volume_mb
+        FROM core.session se
+        JOIN core.contract c ON c.id = se.contract_id AND c.provider_id = se.provider_id
+        WHERE se.started_at >= p_from AND se.started_at < p_to + 1
+          AND c.provider_id = ANY (v_scope)
+        GROUP BY c.subscriber_id)
+    SELECT s.id, s.name::text, st.name::text, t.volume_mb,
+           round((SELECT avg(t0.volume_mb) FROM t t0), 3),
+           round((t.volume_mb / (SELECT avg(t0.volume_mb) FROM t t0) - 1) * 100, 1),
+           count(*) OVER ()
+    FROM t
+    JOIN core.subscriber s      ON s.id = t.subscriber_id
+    JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
+    WHERE t.volume_mb > (SELECT avg(t0.volume_mb) FROM t t0)
+    ORDER BY t.volume_mb DESC, s.id
+    LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
+Limit  (cost=3137.51..3137.56 rows=20 width=172) (actual rows=20.00 loops=1)
+  Buffers: shared hit=1115
+  CTE t
+    ->  GroupAggregate  (cost=2898.43..2900.57 rows=107 width=36) (actual rows=274.00 loops=1)
+          Group Key: c.subscriber_id
+          Buffers: shared hit=759
+          ->  Sort  (cost=2898.43..2898.70 rows=107 width=10) (actual rows=2791.00 loops=1)
+                Sort Key: c.subscriber_id
+                Sort Method: quicksort  Memory: 184kB
+                Buffers: shared hit=759
+                ->  Hash Join  (cost=18.02..2894.82 rows=107 width=10) (actual rows=2791.00 loops=1)
+                      Hash Cond: ((se.contract_id = c.id) AND (se.provider_id = c.provider_id))
+                      Buffers: shared hit=759
+                      ->  Append  (cost=0.28..2454.57 rows=80480 width=14) (actual rows=80464.00 loops=1)
+                            Buffers: shared hit=752
+                            Subplans Removed: 16
+                            ->  Seq Scan on session_2026_q3 se_1  (cost=0.00..1958.96 rows=80464 width=14) (actual rows=80464.00 loops=1)
+                                  Filter: ((started_at >= '2026-07-01'::date) AND (started_at < '2026-10-01'::date))
+                                  Buffers: shared hit=752
+                      ->  Hash  (cost=11.60..11.60 rows=409 width=12) (actual rows=409.00 loops=1)
+                            Buckets: 1024  Batches: 1  Memory Usage: 26kB
+                            Buffers: shared hit=7
+                            ->  Seq Scan on contract_p1 c  (cost=0.00..11.60 rows=409 width=12) (actual rows=409.00 loops=1)
+                                  Filter: (provider_id = ANY ('{1}'::integer[]))
+                                  Buffers: shared hit=7
+  InitPlan 2
+    ->  Aggregate  (cost=2.41..2.42 rows=1 width=32) (actual rows=1.00 loops=1)
+          ->  CTE Scan on t t0  (cost=0.00..2.14 rows=107 width=32) (actual rows=274.00 loops=1)
+                Storage: Memory  Maximum Storage: 27kB
+  InitPlan 3
+    ->  Aggregate  (cost=2.41..2.42 rows=1 width=32) (actual rows=1.00 loops=1)
+          ->  CTE Scan on t t0_1  (cost=0.00..2.14 rows=107 width=32) (actual rows=274.00 loops=1)
+                Storage: Memory  Maximum Storage: 27kB
+  InitPlan 4
+    ->  Aggregate  (cost=2.41..2.42 rows=1 width=32) (actual rows=1.00 loops=1)
+          ->  CTE Scan on t t0_2  (cost=0.00..2.14 rows=107 width=32) (actual rows=274.00 loops=1)
+                Storage: Memory  Maximum Storage: 27kB
+  ->  Sort  (cost=229.68..229.77 rows=36 width=172) (actual rows=20.00 loops=1)
+        Sort Key: t.volume_mb DESC, s.id
+        Sort Method: top-N heapsort  Memory: 30kB
+        Buffers: shared hit=1115
+        ->  WindowAgg  (cost=221.97..228.75 rows=36 width=172) (actual rows=111.00 loops=1)
+              Window: w1 AS ()
+              Storage: Memory  Maximum Storage: 28kB
+              Buffers: shared hit=1112
+              ->  Nested Loop  (cost=0.43..227.85 rows=36 width=108) (actual rows=111.00 loops=1)
+                    Buffers: shared hit=1112
+                    ->  Nested Loop  (cost=0.28..225.21 rows=36 width=83) (actual rows=111.00 loops=1)
+                          Buffers: shared hit=1092
+                          ->  CTE Scan on t  (cost=0.00..2.41 rows=36 width=36) (actual rows=111.00 loops=1)
+                                Filter: (volume_mb > (InitPlan 4).col1)
+                                Rows Removed by Filter: 163
+                                Storage: Memory  Maximum Storage: 27kB
+                                Buffers: shared hit=759
+                          ->  Index Scan using pk_subscriber on subscriber s  (cost=0.28..6.19 rows=1 width=51) (actual rows=1.00 loops=111)
+                                Index Cond: (id = t.subscriber_id)
+                                Index Searches: 111
+                                Buffers: shared hit=333
+                    ->  Memoize  (cost=0.15..0.16 rows=1 width=29) (actual rows=1.00 loops=111)
+                          Cache Key: s.subscriber_type_id
+                          Cache Mode: logical
+                          Hits: 101  Misses: 10  Evictions: 0  Overflows: 0  Memory Usage: 2kB
+                          Buffers: shared hit=20
+                          ->  Index Scan using pk_subscriber_type on subscriber_type st  (cost=0.14..0.15 rows=1 width=29) (actual rows=1.00 loops=10)
+                                Index Cond: (id = s.subscriber_type_id)
+                                Index Searches: 10
+                                Buffers: shared hit=20

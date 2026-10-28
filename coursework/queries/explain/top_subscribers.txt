@@ -1,0 +1,396 @@
+Запрос «Крупнейшие абоненты» (итоговый с условием на данные над 20; без номера, D31). Первые 10 абонентов своего провайдера по выручке за январь–сентябрь 2026
+Роль: mgr_donnet
+Где используется: «Статистика» → «Крупнейшие абоненты»
+
+-- SQL
+SELECT ord, subscriber_name, subscriber_type, volume_mb, revenue, share_pct FROM api.report_top_subscribers('2026-01-01', '2026-09-30', 10);
+
+-- Результат (первые строки)
+ ord |         subscriber_name         |      subscriber_type       | volume_mb | revenue | share_pct 
+-----+---------------------------------+----------------------------+-----------+---------+-----------
+   1 | Алексеев Евгений Викторович     | Частное лицо               | 48351.282 | 5728.90 |       1.4
+   2 | Козлова Марина Михайловна       | Частное лицо               | 36117.121 | 4697.54 |       1.2
+   3 | Никитин Денис Андреевич         | Частное лицо               | 31521.438 | 4186.87 |       1.0
+   4 | Алексеева Виктория Владимировна | Частное лицо               | 30705.291 | 4011.94 |       1.0
+   5 | Литвиненко Владислав Сергеевич  | Частное лицо               | 27621.806 | 3596.62 |       0.9
+   6 | Кравченко Павел Михайлович      | Частное лицо               | 37442.166 | 3582.74 |       0.9
+   7 | Центр занятости № 16            | Государственное учреждение | 40761.235 | 3562.90 |       0.9
+   8 | Смирнов Юрий Олегович           | Частное лицо               | 41469.003 | 3541.67 |       0.9
+   9 | Кузнецов Андрей Дмитриевич      | Частное лицо               | 50189.589 | 3480.02 |       0.9
+  10 | Семёнова Людмила Николаевна     | Частное лицо               | 25759.437 | 3477.95 |       0.9
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 63.157 ms  plan:
+Query Text: SELECT k.rnk::integer, s.id, s.name::text, st.name::text, k.volume_mb, k.revenue,
+           round(100 * k.revenue / nullif(k.total, 0), 1)
+    FROM (SELECT r.subscriber_id, sum(r.volume_mb) AS volume_mb, sum(r.amount) AS revenue,
+                 row_number() OVER (ORDER BY sum(r.amount) DESC, r.subscriber_id) AS rnk,
+                 sum(sum(r.amount)) OVER () AS total
+          FROM api.v_revenue_items r
+          WHERE r.at >= p_from AND r.at < p_to + 1
+            AND (p_provider_id IS NULL OR r.provider_id = p_provider_id)
+          GROUP BY r.subscriber_id
+          ORDER BY sum(r.amount) DESC, r.subscriber_id
+          LIMIT v_top) k
+    JOIN core.subscriber s ON s.id = k.subscriber_id
+    JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
+    ORDER BY k.rnk
+Sort  (cost=36709.45..36709.47 rows=10 width=176) (actual rows=10.00 loops=1)
+  Sort Key: (row_number() OVER w1)
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=5535
+  ->  Hash Join  (cost=36630.30..36709.28 rows=10 width=176) (actual rows=10.00 loops=1)
+        Hash Cond: (s.subscriber_type_id = st.id)
+        Buffers: shared hit=5532
+        ->  Nested Loop  (cost=36629.05..36707.87 rows=10 width=155) (actual rows=10.00 loops=1)
+              Buffers: shared hit=5531
+              ->  Limit  (cost=36628.77..36628.77 rows=10 width=108) (actual rows=10.00 loops=1)
+                    Buffers: shared hit=5501
+                    ->  WindowAgg  (cost=36628.77..36628.80 rows=200 width=108) (actual rows=10.00 loops=1)
+                          Window: w2 AS ()
+                          Storage: Memory  Maximum Storage: 32kB
+                          Buffers: shared hit=5501
+                          ->  WindowAgg  (cost=36622.32..36626.30 rows=200 width=76) (actual rows=280.00 loops=1)
+                                Window: w1 AS (ORDER BY (sum((r.amount)::numeric)), r.subscriber_id ROWS UNBOUNDED PRECEDING)
+                                Storage: Memory  Maximum Storage: 17kB
+                                Buffers: shared hit=5501
+                                ->  Sort  (cost=36622.30..36622.80 rows=200 width=68) (actual rows=280.00 loops=1)
+                                      Sort Key: (sum((r.amount)::numeric)) DESC, r.subscriber_id
+                                      Sort Method: quicksort  Memory: 35kB
+                                      Buffers: shared hit=5501
+                                      ->  GroupAggregate  (cost=36586.05..36614.66 rows=200 width=68) (actual rows=280.00 loops=1)
+                                            Group Key: r.subscriber_id
+                                            Buffers: shared hit=5498
+                                            ->  Sort  (cost=36586.05..36592.45 rows=2561 width=68) (actual rows=7724.00 loops=1)
+                                                  Sort Key: r.subscriber_id
+                                                  Sort Method: quicksort  Memory: 482kB
+                                                  Buffers: shared hit=5498
+                                                  ->  Subquery Scan on r  (cost=324.26..36441.06 rows=2561 width=68) (actual rows=7724.00 loops=1)
+                                                        Filter: ((r.at >= '2026-01-01'::date) AND (r.at < '2026-10-01'::date))
+                                                        Rows Removed by Filter: 9856
+                                                        Buffers: shared hit=5498
+                                                        ->  Append  (cost=324.26..28758.51 rows=512170 width=114) (actual rows=17580.00 loops=1)
+                                                              Buffers: shared hit=5498
+                                                              ->  Subquery Scan on "*SELECT* 1"  (cost=324.26..1083.92 rows=12004 width=86) (actual rows=409.00 loops=1)
+                                                                    Buffers: shared hit=424
+                                                                    ->  Hash Join  (cost=324.26..933.87 rows=12004 width=58) (actual rows=409.00 loops=1)
+                                                                          Hash Cond: (c.subscriber_id = s_1.id)
+                                                                          Buffers: shared hit=424
+                                                                          InitPlan 1
+                                                                            ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                                                                  Buffers: shared hit=62
+                                                                          ->  Append  (cost=0.00..548.07 rows=12004 width=16) (actual rows=409.00 loops=1)
+                                                                                Buffers: shared hit=280
+                                                                                ->  Seq Scan on contract_p1 c_1  (cost=0.00..16.20 rows=409 width=16) (actual rows=409.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Buffers: shared hit=69
+                                                                                ->  Seq Scan on contract_p2 c_2  (cost=0.00..15.53 rows=379 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 379
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p3 c_3  (cost=0.00..15.53 rows=379 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 379
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p4 c_4  (cost=0.00..15.53 rows=379 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 379
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p5 c_5  (cost=0.00..17.49 rows=422 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 422
+                                                                                      Buffers: shared hit=8
+                                                                                ->  Seq Scan on contract_p6 c_6  (cost=0.00..17.61 rows=427 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 427
+                                                                                      Buffers: shared hit=8
+                                                                                ->  Seq Scan on contract_p7 c_7  (cost=0.00..16.34 rows=415 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 415
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p8 c_8  (cost=0.00..17.86 rows=438 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 438
+                                                                                      Buffers: shared hit=8
+                                                                                ->  Seq Scan on contract_p9 c_9  (cost=0.00..16.23 rows=410 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 410
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p10 c_10  (cost=0.00..16.07 rows=403 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 403
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p11 c_11  (cost=0.00..16.16 rows=407 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 407
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p12 c_12  (cost=0.00..15.55 rows=380 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 380
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p13 c_13  (cost=0.00..18.06 rows=447 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 447
+                                                                                      Buffers: shared hit=8
+                                                                                ->  Seq Scan on contract_p14 c_14  (cost=0.00..15.73 rows=388 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 388
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p15 c_15  (cost=0.00..15.46 rows=376 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 376
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p16 c_16  (cost=0.00..15.12 rows=361 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 361
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p17 c_17  (cost=0.00..17.47 rows=421 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 421
+                                                                                      Buffers: shared hit=8
+                                                                                ->  Seq Scan on contract_p18 c_18  (cost=0.00..15.53 rows=379 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 379
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p19 c_19  (cost=0.00..17.36 rows=416 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 416
+                                                                                      Buffers: shared hit=8
+                                                                                ->  Seq Scan on contract_p20 c_20  (cost=0.00..16.02 rows=401 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 401
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p21 c_21  (cost=0.00..15.19 rows=364 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 364
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p22 c_22  (cost=0.00..18.10 rows=449 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 449
+                                                                                      Buffers: shared hit=8
+                                                                                ->  Seq Scan on contract_p23 c_23  (cost=0.00..16.23 rows=410 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 410
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p24 c_24  (cost=0.00..15.46 rows=376 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 376
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p25 c_25  (cost=0.00..16.23 rows=410 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 410
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p26 c_26  (cost=0.00..15.23 rows=366 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 366
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p27 c_27  (cost=0.00..17.77 rows=434 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 434
+                                                                                      Buffers: shared hit=8
+                                                                                ->  Seq Scan on contract_p28 c_28  (cost=0.00..15.41 rows=374 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 374
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p29 c_29  (cost=0.00..15.93 rows=397 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 397
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p30 c_30  (cost=0.00..15.66 rows=385 width=16) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                      Rows Removed by Filter: 385
+                                                                                      Buffers: shared hit=7
+                                                                                ->  Seq Scan on contract_p31 c_31  (cost=0.00..0.00 rows=1 width=44) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                                ->  Seq Scan on contract_default c_32  (cost=0.00..0.00 rows=1 width=44) (actual rows=0.00 loops=1)
+                                                                                      Filter: (provider_id = ANY ((InitPlan 1).col1))
+                                                                          ->  Hash  (cost=224.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                                                                Buckets: 8192  Batches: 1  Memory Usage: 377kB
+                                                                                Buffers: shared hit=144
+                                                                                ->  Seq Scan on subscriber s_1  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                                                                      Buffers: shared hit=144
+                                                              ->  Subquery Scan on "*SELECT* 2"  (cost=1053.91..25113.74 rows=500166 width=88) (actual rows=17171.00 loops=1)
+                                                                    Buffers: shared hit=5074
+                                                                    ->  Hash Join  (cost=1053.91..20112.08 rows=500166 width=62) (actual rows=17171.00 loops=1)
+                                                                          Hash Cond: (se.contract_id = c_33.id)
+                                                                          Buffers: shared hit=5074
+                                                                          InitPlan 2
+                                                                            ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
+                                                                                  Buffers: shared hit=32
+                                                                          ->  Append  (cost=0.00..12181.21 rows=500083 width=24) (actual rows=500025.00 loops=1)
+                                                                                Buffers: shared hit=4680
+                                                                                ->  Seq Scan on session_2024_q1 se_1  (cost=0.00..80.31 rows=4131 width=24) (actual rows=4131.00 loops=1)
+                                                                                      Buffers: shared hit=39
+                                                                                ->  Seq Scan on session_2024_q2 se_2  (cost=0.00..231.05 rows=11905 width=24) (actual rows=11905.00 loops=1)
+                                                                                      Buffers: shared hit=112
+                                                                                ->  Seq Scan on session_2024_q3 se_3  (cost=0.00..386.92 rows=19992 width=24) (actual rows=19992.00 loops=1)
+                                                                                      Buffers: shared hit=187
+                                                                                ->  Seq Scan on session_2024_q4 se_4  (cost=0.00..549.98 rows=28398 width=24) (actual rows=28398.00 loops=1)
+                                                                                      Buffers: shared hit=266
+                                                                                ->  Seq Scan on session_2025_q1 se_5  (cost=0.00..684.87 rows=35387 width=24) (actual rows=35387.00 loops=1)
+                                                                                      Buffers: shared hit=331
+                                                                                ->  Seq Scan on session_2025_q2 se_6  (cost=0.00..837.53 rows=43253 width=24) (actual rows=43253.00 loops=1)
+                                                                                      Buffers: shared hit=405
+                                                                                ->  Seq Scan on session_2025_q3 se_7  (cost=0.00..1005.49 rows=51949 width=24) (actual rows=51949.00 loops=1)
+                                                                                      Buffers: shared hit=486
+                                                                                ->  Seq Scan on session_2025_q4 se_8  (cost=0.00..1160.30 rows=59930 width=24) (actual rows=59930.00 loops=1)
+                                                                                      Buffers: shared hit=561
+                                                                                ->  Seq Scan on session_2026_q1 se_9  (cost=0.00..1274.69 rows=65869 width=24) (actual rows=65869.00 loops=1)
+                                                                                      Buffers: shared hit=616
+                                                                                ->  Seq Scan on session_2026_q2 se_10  (cost=0.00..1411.02 rows=72902 width=24) (actual rows=72902.00 loops=1)
+                                                                                      Buffers: shared hit=682
+                                                                                ->  Seq Scan on session_2026_q3 se_11  (cost=0.00..1556.64 rows=80464 width=24) (actual rows=80464.00 loops=1)
+                                                                                      Buffers: shared hit=752
+                                                                                ->  Seq Scan on session_2026_q4 se_12  (cost=0.00..500.45 rows=25845 width=24) (actual rows=25845.00 loops=1)
+                                                                                      Buffers: shared hit=242
+                                                                                ->  Seq Scan on session_2027_q1 se_13  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
+                                                                                ->  Seq Scan on session_2027_q2 se_14  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
+                                                                                ->  Seq Scan on session_2027_q3 se_15  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
+                                                                                ->  Seq Scan on session_2027_q4 se_16  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
+                                                                                ->  Seq Scan on session_default se_17  (cost=0.00..1.54 rows=54 width=76) (actual rows=0.00 loops=1)
+                                                                                      Buffers: shared hit=1
+                                                                          ->  Hash  (cost=903.60..903.60 rows=12004 width=14) (actual rows=409.00 loops=1)
+                                                                                Buckets: 16384  Batches: 1  Memory Usage: 147kB
+                                                                                Buffers: shared hit=394
+                                                                                ->  Hash Join  (cost=324.00..903.60 rows=12004 width=14) (actual rows=409.00 loops=1)
+                                                                                      Hash Cond: (c_33.subscriber_id = sb.id)
+                                                                                      Buffers: shared hit=394
+                                                                                      ->  Append  (cost=0.00..548.07 rows=12004 width=12) (actual rows=409.00 loops=1)
+                                                                                            Buffers: shared hit=250
+                                                                                            ->  Seq Scan on contract_p1 c_34  (cost=0.00..16.20 rows=409 width=12) (actual rows=409.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Buffers: shared hit=39
+                                                                                            ->  Seq Scan on contract_p2 c_35  (cost=0.00..15.53 rows=379 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 379
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p3 c_36  (cost=0.00..15.53 rows=379 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 379
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p4 c_37  (cost=0.00..15.53 rows=379 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 379
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p5 c_38  (cost=0.00..17.49 rows=422 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 422
+                                                                                                  Buffers: shared hit=8
+                                                                                            ->  Seq Scan on contract_p6 c_39  (cost=0.00..17.61 rows=427 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 427
+                                                                                                  Buffers: shared hit=8
+                                                                                            ->  Seq Scan on contract_p7 c_40  (cost=0.00..16.34 rows=415 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 415
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p8 c_41  (cost=0.00..17.86 rows=438 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 438
+                                                                                                  Buffers: shared hit=8
+                                                                                            ->  Seq Scan on contract_p9 c_42  (cost=0.00..16.23 rows=410 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 410
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p10 c_43  (cost=0.00..16.07 rows=403 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 403
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p11 c_44  (cost=0.00..16.16 rows=407 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 407
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p12 c_45  (cost=0.00..15.55 rows=380 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 380
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p13 c_46  (cost=0.00..18.06 rows=447 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 447
+                                                                                                  Buffers: shared hit=8
+                                                                                            ->  Seq Scan on contract_p14 c_47  (cost=0.00..15.73 rows=388 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 388
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p15 c_48  (cost=0.00..15.46 rows=376 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 376
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p16 c_49  (cost=0.00..15.12 rows=361 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 361
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p17 c_50  (cost=0.00..17.47 rows=421 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 421
+                                                                                                  Buffers: shared hit=8
+                                                                                            ->  Seq Scan on contract_p18 c_51  (cost=0.00..15.53 rows=379 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 379
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p19 c_52  (cost=0.00..17.36 rows=416 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 416
+                                                                                                  Buffers: shared hit=8
+                                                                                            ->  Seq Scan on contract_p20 c_53  (cost=0.00..16.02 rows=401 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 401
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p21 c_54  (cost=0.00..15.19 rows=364 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 364
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p22 c_55  (cost=0.00..18.10 rows=449 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 449
+                                                                                                  Buffers: shared hit=8
+                                                                                            ->  Seq Scan on contract_p23 c_56  (cost=0.00..16.23 rows=410 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 410
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p24 c_57  (cost=0.00..15.46 rows=376 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 376
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p25 c_58  (cost=0.00..16.23 rows=410 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 410
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p26 c_59  (cost=0.00..15.23 rows=366 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 366
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p27 c_60  (cost=0.00..17.77 rows=434 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 434
+                                                                                                  Buffers: shared hit=8
+                                                                                            ->  Seq Scan on contract_p28 c_61  (cost=0.00..15.41 rows=374 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 374
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p29 c_62  (cost=0.00..15.93 rows=397 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 397
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p30 c_63  (cost=0.00..15.66 rows=385 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                                  Rows Removed by Filter: 385
+                                                                                                  Buffers: shared hit=7
+                                                                                            ->  Seq Scan on contract_p31 c_64  (cost=0.00..0.00 rows=1 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                            ->  Seq Scan on contract_default c_65  (cost=0.00..0.00 rows=1 width=12) (actual rows=0.00 loops=1)
+                                                                                                  Filter: (provider_id = ANY ((InitPlan 2).col1))
+                                                                                      ->  Hash  (cost=224.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                                                                            Buckets: 8192  Batches: 1  Memory Usage: 377kB
+                                                                                            Buffers: shared hit=144
+                                                                                            ->  Seq Scan on subscriber sb  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
+                                                                                                  Buffers: shared hit=144
+              ->  Index Scan using pk_subscriber on subscriber s  (cost=0.28..7.90 rows=1 width=51) (actual rows=1.00 loops=10)
+                    Index Cond: (id = r.subscriber_id)
+                    Index Searches: 10
+                    Buffers: shared hit=30
+        ->  Hash  (cost=1.11..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 9kB
+              Buffers: shared hit=1
+              ->  Seq Scan on subscriber_type st  (cost=0.00..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
+                    Buffers: shared hit=1

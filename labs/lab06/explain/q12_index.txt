@@ -8,19 +8,20 @@ SELECT period_title, subscriber_type, contracts FROM api.report_new_contracts('2
 -- Результат (первые строки)
  period_title  |        subscriber_type         | contracts 
 ---------------+--------------------------------+-----------
- Июль 2026     | Частное лицо                   |         6
- Июль 2026     | Общественная организация       |         1
- Август 2026   | Частное лицо                   |        12
- Август 2026   | Школа                          |         2
- Август 2026   | Предприятие                    |         2
- Сентябрь 2026 | Частное лицо                   |         7
- Сентябрь 2026 | Индивидуальный предприниматель |         2
+ Июль 2026     | Частное лицо                   |        10
+ Июль 2026     | Школа                          |         1
+ Август 2026   | Частное лицо                   |         3
+ Август 2026   | Школа                          |         1
+ Август 2026   | Общественная организация       |         1
+ Сентябрь 2026 | Частное лицо                   |        12
+ Сентябрь 2026 | Индивидуальный предприниматель |         1
+ Сентябрь 2026 | Школа                          |         1
  Сентябрь 2026 | Вуз                            |         1
  Сентябрь 2026 | Предприятие                    |         2
  Сентябрь 2026 | Больница                       |         1
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 0.012 ms  plan:
+duration: 0.011 ms  plan:
 Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
 Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -30,7 +31,7 @@ Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
           Rows Removed by Filter: 7
           Buffers: shared hit=1
 
-duration: 0.004 ms  plan:
+duration: 0.006 ms  plan:
 Query Text: 
     SELECT u.provider_id FROM sec.app_user u WHERE u.login = session_user
 
@@ -38,7 +39,7 @@ Seq Scan on app_user u  (cost=0.00..1.10 rows=1 width=4) (actual rows=1.00 loops
   Filter: ((login)::text = SESSION_USER)
   Buffers: shared hit=1
 
-duration: 0.008 ms  plan:
+duration: 0.007 ms  plan:
 Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
 Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -48,7 +49,7 @@ Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
           Rows Removed by Filter: 7
           Buffers: shared hit=1
 
-duration: 1.262 ms  plan:
+duration: 1.362 ms  plan:
 Query Text: SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer, st.name::text, k.contracts
     FROM (SELECT date_trunc(p_grain, c.connected_on::timestamp)::date AS period, s.subscriber_type_id,
                  count(*) AS contracts
@@ -58,34 +59,39 @@ Query Text: SELECT k.period, sec.period_title(p_grain, k.period), st.id::integer
           GROUP BY 1, s.subscriber_type_id) k
     JOIN ref.subscriber_type st ON st.id = k.subscriber_type_id
     ORDER BY k.period, st.id
-Sort  (cost=329.36..329.39 rows=11 width=82) (actual rows=10.00 loops=1)
+Sort  (cost=236.15..236.18 rows=11 width=82) (actual rows=11.00 loops=1)
   Sort Key: ((date_trunc('month'::text, (c.connected_on)::timestamp without time zone))::date), st.id
   Sort Method: quicksort  Memory: 25kB
-  Buffers: shared hit=191
-  ->  Hash Join  (cost=324.94..329.17 rows=11 width=82) (actual rows=10.00 loops=1)
+  Buffers: shared hit=164
+  ->  Hash Join  (cost=231.76..235.96 rows=11 width=82) (actual rows=11.00 loops=1)
         Hash Cond: (s.subscriber_type_id = st.id)
-        Buffers: shared hit=185
-        ->  GroupAggregate  (cost=323.69..324.68 rows=36 width=14) (actual rows=10.00 loops=1)
+        Buffers: shared hit=158
+        ->  GroupAggregate  (cost=230.52..231.48 rows=35 width=14) (actual rows=11.00 loops=1)
               Group Key: ((date_trunc('month'::text, (c.connected_on)::timestamp without time zone))::date), s.subscriber_type_id
-              Buffers: shared hit=125
-              ->  Sort  (cost=323.69..323.78 rows=36 width=6) (actual rows=36.00 loops=1)
+              Buffers: shared hit=98
+              ->  Sort  (cost=230.52..230.60 rows=35 width=6) (actual rows=34.00 loops=1)
                     Sort Key: ((date_trunc('month'::text, (c.connected_on)::timestamp without time zone))::date), s.subscriber_type_id
                     Sort Method: quicksort  Memory: 25kB
-                    Buffers: shared hit=125
-                    ->  Nested Loop  (cost=5.03..322.76 rows=36 width=6) (actual rows=36.00 loops=1)
-                          Buffers: shared hit=125
-                          ->  Bitmap Heap Scan on contract c  (cost=4.74..99.69 rows=36 width=8) (actual rows=36.00 loops=1)
+                    Buffers: shared hit=98
+                    ->  Nested Loop  (cost=4.89..229.62 rows=35 width=6) (actual rows=34.00 loops=1)
+                          Buffers: shared hit=98
+                          ->  Bitmap Heap Scan on contract_p1 c  (cost=4.59..12.16 rows=35 width=8) (actual rows=34.00 loops=1)
                                 Recheck Cond: ((provider_id = ANY ('{1}'::integer[])) AND (connected_on >= '2026-07-01'::date) AND (connected_on <= '2026-09-30'::date))
-                                Heap Blocks: exact=15
-                                Buffers: shared hit=17
-                                ->  Bitmap Index Scan on ix_contract_provider_id_connected_on  (cost=0.00..4.74 rows=36 width=0) (actual rows=36.00 loops=1)
+                                Heap Blocks: exact=1
+                                Buffers: shared hit=2
+                                ->  Bitmap Index Scan on contract_p1_provider_id_connected_on_idx  (cost=0.00..4.58 rows=35 width=0) (actual rows=34.00 loops=1)
                                       Index Cond: ((provider_id = ANY ('{1}'::integer[])) AND (connected_on >= '2026-07-01'::date) AND (connected_on <= '2026-09-30'::date))
                                       Index Searches: 1
-                                      Buffers: shared hit=2
-                          ->  Index Scan using pk_subscriber on subscriber s  (cost=0.28..6.19 rows=1 width=6) (actual rows=1.00 loops=36)
-                                Index Cond: (id = c.subscriber_id)
-                                Index Searches: 36
-                                Buffers: shared hit=108
+                                      Buffers: shared hit=1
+                          ->  Memoize  (cost=0.29..6.37 rows=1 width=6) (actual rows=1.00 loops=34)
+                                Cache Key: c.subscriber_id
+                                Cache Mode: logical
+                                Hits: 2  Misses: 32  Evictions: 0  Overflows: 0  Memory Usage: 4kB
+                                Buffers: shared hit=96
+                                ->  Index Scan using pk_subscriber on subscriber s  (cost=0.28..6.36 rows=1 width=6) (actual rows=1.00 loops=32)
+                                      Index Cond: (id = c.subscriber_id)
+                                      Index Searches: 32
+                                      Buffers: shared hit=96
         ->  Hash  (cost=1.11..1.11 rows=11 width=29) (actual rows=11.00 loops=1)
               Buckets: 1024  Batches: 1  Memory Usage: 9kB
               Buffers: shared hit=1

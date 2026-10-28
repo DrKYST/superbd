@@ -1,0 +1,78 @@
+Запрос 19 (итоговый с условием на данные) — без использования индекса. Тот же вызов в транзакции с запретом индексного доступа (договор с кодом 11)
+Роль: op_donnet
+Где используется: подраздел 4.7 ПЗ (экрана нет, D23)
+
+-- SQL
+BEGIN;
+SET LOCAL enable_indexscan = off;
+SET LOCAL enable_bitmapscan = off;
+SELECT period_title, sessions, volume_mb, full_cost, discount, cost FROM api.report_contract_months(11, '2026-01-01', '2026-09-30');
+ROLLBACK;
+
+-- Результат (первые строки)
+ period_title  | sessions | volume_mb | full_cost | discount |  cost  
+---------------+----------+-----------+-----------+----------+--------
+ Январь 2026   |        3 |  2911.502 |    241.65 |    36.72 | 204.93
+ Февраль 2026  |        1 |   356.353 |     29.58 |    14.79 |  14.79
+ Март 2026     |        1 |  1052.453 |     87.35 |    43.67 |  43.68
+ Апрель 2026   |        1 |  1231.041 |    102.18 |    51.09 |  51.09
+ Май 2026      |        3 |   560.271 |     46.50 |    20.97 |  25.53
+ Июнь 2026     |        1 |  1194.848 |     99.17 |    49.58 |  49.59
+ Июль 2026     |        3 |  1914.507 |    158.90 |    75.70 |  83.20
+ Август 2026   |        2 |  1565.591 |    129.94 |    50.92 |  79.02
+ Сентябрь 2026 |        4 |  3065.871 |    254.47 |    87.41 | 167.06
+ Итого         |       19 | 13852.437 |   1149.75 |   430.86 | 718.89
+
+-- План выполнения (auto_explain, ANALYZE, BUFFERS)
+duration: 18.959 ms  plan:
+Query Text: SELECT k.period, CASE WHEN k.period IS NULL THEN 'Итого' ELSE sec.period_title('month', k.period) END,
+           k.sessions, k.volume_mb, round(k.full_cost, 2), round(k.full_cost, 2) - k.cost, k.cost
+    FROM (SELECT date_trunc('month', se.started_at)::date AS period,          -- NULL у строки «Итого»
+                 count(*) AS sessions, sum(se.volume_mb) AS volume_mb,
+                 sum(se.volume_mb * c.price_per_mb) AS full_cost, sum(se.cost) AS cost
+          FROM core.session se
+          JOIN core.contract c ON c.id = se.contract_id AND c.provider_id = se.provider_id
+          WHERE se.contract_id = p_contract_id
+            AND se.started_at >= p_from AND se.started_at < p_to + 1
+            AND c.provider_id = ANY (v_scope)
+          GROUP BY ROLLUP (date_trunc('month', se.started_at)::date)
+          HAVING count(*) > 0) k                     -- без видимых сеансов ROLLUP дал бы пустую строку «Итого»
+    ORDER BY k.period NULLS LAST
+Sort  (cost=13440.65..13440.66 rows=1 width=172) (actual rows=10.00 loops=1)
+  Sort Key: k.period
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=2115
+  ->  Subquery Scan on k  (cost=13440.32..13440.64 rows=1 width=172) (actual rows=10.00 loops=1)
+        Buffers: shared hit=2112
+        ->  GroupAggregate  (cost=13440.32..13440.39 rows=1 width=108) (actual rows=10.00 loops=1)
+              Group Key: ((date_trunc('month'::text, se.started_at))::date)
+              Group Key: ()
+              Filter: (count(*) > 0)
+              Buffers: shared hit=2053
+              ->  Sort  (cost=13440.32..13440.33 rows=1 width=29) (actual rows=19.00 loops=1)
+                    Sort Key: ((date_trunc('month'::text, se.started_at))::date)
+                    Sort Method: quicksort  Memory: 25kB
+                    Buffers: shared hit=2053
+                    ->  Nested Loop  (cost=0.27..13440.31 rows=1 width=29) (actual rows=19.00 loops=1)
+                          Join Filter: (se.provider_id = c.provider_id)
+                          Buffers: shared hit=2053
+                          ->  Index Scan using contract_p1_pkey on contract_p1 c  (cost=0.27..8.29 rows=1 width=13) (actual rows=1.00 loops=1)
+                                Disabled: true
+                                Index Cond: ((id = 11) AND (provider_id = ANY ('{1}'::integer[])))
+                                Index Searches: 1
+                                Buffers: shared hit=3
+                          ->  Append  (cost=0.00..13431.56 rows=36 width=35) (actual rows=19.00 loops=1)
+                                Buffers: shared hit=2050
+                                Subplans Removed: 14
+                                ->  Seq Scan on session_2026_q1 se_1  (cost=0.00..1768.71 rows=7 width=28) (actual rows=5.00 loops=1)
+                                      Filter: ((started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date) AND (contract_id = 11))
+                                      Rows Removed by Filter: 65864
+                                      Buffers: shared hit=616
+                                ->  Seq Scan on session_2026_q2 se_2  (cost=0.00..1957.79 rows=7 width=28) (actual rows=5.00 loops=1)
+                                      Filter: ((started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date) AND (contract_id = 11))
+                                      Rows Removed by Filter: 72897
+                                      Buffers: shared hit=682
+                                ->  Seq Scan on session_2026_q3 se_3  (cost=0.00..2160.12 rows=8 width=28) (actual rows=9.00 loops=1)
+                                      Filter: ((started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date) AND (contract_id = 11))
+                                      Rows Removed by Filter: 80455
+                                      Buffers: shared hit=752

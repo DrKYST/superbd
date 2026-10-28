@@ -15,7 +15,7 @@ SELECT title, group_name, users FROM api.v_user_groups;
  Операторы                 | grp_operator |     3
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 0.016 ms  plan:
+duration: 0.014 ms  plan:
 Query Text: EXISTS (SELECT 1 FROM sec.app_user u WHERE u.login = session_user AND u.reset_pending)
 Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
   Buffers: shared hit=1
@@ -25,7 +25,7 @@ Result  (cost=1.10..1.11 rows=1 width=1) (actual rows=1.00 loops=1)
           Rows Removed by Filter: 7
           Buffers: shared hit=1
 
-duration: 3.571 ms  plan:
+duration: 3.862 ms  plan:
 Query Text: SELECT title, group_name, users FROM api.v_user_groups;
 Subquery Scan on v_user_groups  (cost=7.88..7.90 rows=2 width=72) (actual rows=5.00 loops=1)
   Buffers: shared hit=416
