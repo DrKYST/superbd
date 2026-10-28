@@ -20,6 +20,8 @@ from pathlib import Path
 PSQL = os.environ.get("PSQL", r"C:\Program Files\PostgreSQL\18\bin\psql.exe")
 SCHEMAS = "('ref', 'core', 'sec', 'audit')"
 BEGIN, END = "<!-- BEGIN schema2md -->", "<!-- END schema2md -->"
+DETAIL = ["core.provider", "core.subscriber", "core.session"]   # подробная структура
+SKIP = ["core.contract"]   # структура показана рисунком с CREATE TABLE в тексте раздела 4.2
 TABLE_ORDER = ["ref.ownership_type", "ref.city", "ref.subscriber_type", "ref.tariff",
                "core.provider", "core.subscriber", "core.contract", "core.session",
                "sec.app_user", "audit.change_log"]
@@ -64,7 +66,7 @@ def domains() -> list[str]:
         LEFT JOIN pg_constraint c ON c.contypid = t.oid
         WHERE t.typtype = 'd' AND n.nspname IN {SCHEMAS}
         ORDER BY t.typname""")
-    out = ["Таблица: Домены {#tab:pz-domains}", "",
+    out = ["Таблица: Домены {#tab:pz-domains size=10}", "",
            "| Домен | Базовый тип | Ограничение | Описание |", "|---|---|---|---|"]
     for name, base, chk, comment in rows:
         out.append(f"| {code(name)} | {tidy(base)} | {code(cell(tidy(chk)))} | {cell(comment)} |")
@@ -97,11 +99,20 @@ def tables() -> list[str]:
         by_table.setdefault(t, (tcomment, []))[1].append(rest)
     order = [t for t in TABLE_ORDER if t in by_table] + sorted(set(by_table) - set(TABLE_ORDER))
     out: list[str] = []
-    for t in order:
+    others = [t for t in order if t not in DETAIL and t not in SKIP]
+    if others:
+        # справочники и служебные таблицы — одной сводной таблицей (объём ПЗ: весь курсовой ≤ ~100 с.)
+        out += ["", "Таблица: Справочники и служебные таблицы {#tab:pz-other-tables size=10 widths=24,30,46}", "",
+                "| Таблица | Назначение | Колонки (ключи) |", "|---|---|---|"]
+        for t in others:
+            tcomment, rows = by_table[t]
+            colsdesc = ", ".join(f"{name}" + (f" ({keys})" if keys else "") for name, _, _, _, keys, _ in rows)
+            out.append(f"| {code(t)} | {cell(tcomment)} | {cell(colsdesc)} |")
+    for t in [t for t in order if t in DETAIL]:
         tcomment, rows = by_table[t]
         key = "tab:pz-" + t.split(".")[1].replace("_", "-")
         title = tcomment.split(" — ")[0]
-        out += ["", f"Таблица: Структура таблицы «{title}» ({t}) {{#{key}}}", "",
+        out += ["", f"Таблица: Структура таблицы «{title}» ({t}) {{#{key} size=10}}", "",
                 "| Колонка | Тип | NULL | Ключ | По умолчанию | Описание |", "|---|---|---|---|---|---|"]
         for name, typ, null, default, keys, comment in rows:
             out.append(f"| {code(name)} | {code(tidy(typ))} | {null} | {keys} | "
@@ -121,8 +132,10 @@ def indexes() -> list[str]:
         JOIN pg_class t ON t.oid = x.indrelid
         JOIN pg_namespace n ON n.oid = t.relnamespace
         WHERE n.nspname IN {SCHEMAS}
+          AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = i.oid)
         ORDER BY n.nspname, t.relname, x.indisprimary DESC, x.indisunique DESC, i.relname""")
-    out = ["Таблица: Индексы {#tab:pz-indexes}", "",
+    out = ["Таблица: Индексы, созданные явно (без индексов первичных ключей и ограничений уникальности) "
+           "{#tab:pz-indexes size=10}", "",
            "| Индекс | Таблица | Колонки и условие | Вид | Назначение |", "|---|---|---|---|---|"]
     for name, table, cols, kind, comment in rows:
         if not comment and not kind and name.endswith("_id"):
@@ -144,7 +157,7 @@ def sequences() -> list[str]:
         LEFT JOIN pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
         WHERE s.relkind = 'S' AND n.nspname IN {SCHEMAS}
         ORDER BY d.deptype, 1""")
-    out = ["Таблица: Последовательности {#tab:pz-sequences}", "",
+    out = ["Таблица: Последовательности {#tab:pz-sequences size=10}", "",
            "| Последовательность | Тип | Колонка | Вид | Назначение |", "|---|---|---|---|---|"]
     for name, typ, col, kind, comment in rows:
         if not comment and kind == "identity":
@@ -155,10 +168,12 @@ def sequences() -> list[str]:
 
 def build() -> str:
     parts = [
-        "Домены приведены в таблице [@tab:pz-domains], структура таблиц — в таблицах "
-        "[@tab:pz-ownership-type] – [@tab:pz-change-log], индексы — в таблице [@tab:pz-indexes], "
-        "последовательности — в таблице [@tab:pz-sequences]. Таблицы сформированы по фактической схеме базы "
-        "данных (комментарии COMMENT ON и системный каталог) сценарием `tools/schema2md.py`.",
+        "Домены приведены в таблице [@tab:pz-domains], справочники и служебные таблицы — в таблице "
+        "[@tab:pz-other-tables], структура основных таблиц — в таблицах [@tab:pz-provider] – [@tab:pz-session] "
+        "(таблицы «Договор» — на рисунке [@fig:create-contract]), "
+        "индексы — в таблице [@tab:pz-indexes], последовательности — в таблице [@tab:pz-sequences]. Таблицы "
+        "сформированы по фактической схеме базы данных (комментарии COMMENT ON и системный каталог) сценарием "
+        "`tools/schema2md.py`; тексты сценариев создания основных объектов — в приложении Б.",
         "",
         *domains(), *tables(), "", *indexes(), "", *sequences(),
     ]

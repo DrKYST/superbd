@@ -7,7 +7,9 @@
 Оформление — по образцу tools/labreport.py и шаблону tools/md2docx/templates/pz-template.docx (стили, поля,
 номер страницы вверху справа) и обязательным требованиям студента (.claude/rules/reports.md):
   * только Times New Roman — в тексте, таблицах, коде, подписях, титульном листе, ТЗ, колонтитулах;
-  * код в основной части — рисунок: рамка с кодом целиком на одной странице, под ней «Рисунок N.k – …» по центру;
+  * код в основной части — рисунок: в рамке только код (целиком на одной странице), под рамкой — «Рисунок N.k – …»;
+  * весь документ ≤ TOTAL_LIMIT страниц (курсовой целиком около 100 с. с учётом недописанного), бюджет — BUDGET;
+  * в тексте нет ссылок на ТЗ, источников ≤ 4, ссылка — на один источник [N];
   * код в приложениях — «Листинг Б.k – …» над листингом, три колонки, 11 пт, ключевые объекты в сокращении;
   * «Таблица N.k – …» над таблицей; ссылка на каждый объект в тексте до него; нумерация внутри раздела,
     в приложениях — с буквой.
@@ -19,10 +21,12 @@
   ## 1.1 Подраздел / ### 1.1.1 Пункт
   обычные абзацы (строки подряд склеиваются), «- пункт» — список с тире, «1. пункт» — нумерованный «1)»
   Таблица: Название {#tab:key}     перед pipe-таблицей; {#tab:key widths=20,30,50} — ширины колонок в процентах
-  ![Название](путь.png){#fig:key width=16}            рисунок (нет файла — видимая заглушка)
+  ![Название](путь.png){#fig:key width=16}            рисунок (нет файла — видимая заглушка);
+      crop=form|main|x0,y0,x1,y1 — обрезка снимка клиента, trim — пустой низ, squeeze — пустые полосы внутри
+  ![А](a.png){#fig:a} ![Б](b.png){#fig:b}             два снимка в одной строке — рядом, у каждого своя подпись
   !code[Название](путь#селектор){#fig:key}            код-рисунок основной части
   !listing[Название](путь#селектор){#lst:key}         листинг приложения (три колонки, сокращение)
-  !stub[текст]                     видимая заглушка «[ЗАГЛУШКА: …]» + запись в coursework/out/pz_todo.md
+  !stub[текст || подробности]      видимая заглушка «[ЗАГЛУШКА: текст]» + запись в coursework/out/pz_todo.md
   !tz  !toc  !pagebreak            ТЗ (coursework/tz/tz.docx), содержание, разрыв страницы
   [@fig:key] [@tab:key] [@lst:key] номер объекта; {{PAGES}} {{FIGURES}} {{TABLES}} {{SOURCES}} {{APPENDICES}} — для реферата
 Селекторы кода: #view:api.v_x  #func:api.f  #query:api.f (выборка RETURN QUERY)  #table:core.t  #stmt:<начало>
@@ -53,6 +57,11 @@ FONT = "Times New Roman"
 TEXT_WIDTH = 9638          # dxa: A4, поля шаблона 3 см и 1 см
 TEXT_HEIGHT_PT = 714       # высота текста страницы (поля 2 и 2,5 см)
 DASH = "–"
+TOTAL_LIMIT = 90           # страниц всего сейчас; весь курсовой ≤ ~100 с. вместе с недописанными частями
+# бюджет по разделам на 28.10.2026 (сумма 90); недописанное (4.3, 4.5, 4.6, 4.8, формы раздела 5, тесты) —
+# из резерва ~10 с., при дописывании сокращать другие части, чтобы весь документ оставался около 100 с.
+BUDGET = {"front": 12, "1": 3, "2": 3, "3": 5, "4": 33, "5": 8, "6": 3, "tail": 3,
+          "А": 2, "Б": 6, "В": 5, "Г": 3, "Д": 2, "Е": 2}
 
 
 def read(path):
@@ -253,7 +262,7 @@ def api_table():
         c = prefix + short[:1].upper() + short[1:]
         g = ", ".join(GROUPS[x] for x in order if x in o["groups"])
         rows.append([f"api.{name}", o["kind"], c, g])
-    return ("Представления и функции схемы api", "tab:api-objects", {"widths": "27,14,46,13", "size": "11"}, rows)
+    return ("Представления и функции схемы api", "tab:api-objects", {"widths": "28,18,40,14", "size": "10"}, rows)
 
 
 def file_list(lang):
@@ -286,6 +295,9 @@ def file_list(lang):
             if not parts:
                 first = next((l.strip("- ").strip() for l in text.split("\n") if l.startswith("--")), "")
                 first = re.sub(r"^(Seed )?\d+\.\s*", "", first).rstrip(".")
+                # ссылки на ТЗ и задания ЛР из комментариев в записку не переносятся
+                first = re.sub(r"\((?:ТЗ|задание)[^:()]*:\s*", "(", first)
+                first = re.sub(r"\s*\((?:ТЗ|задание)[^()]*\)", "", first)
                 parts.append("запуск всех тестов и итог прогона" if f.endswith("run_all.sql") else first)
             rows.append([f, str(n), "; ".join(parts)])
         return ("Состав сценариев серверной части", "tab:files-sql", {"widths": "30,8,62", "size": "10"}, rows)
@@ -352,6 +364,16 @@ def parse(text, md_dir):
             flush()
             _, key, kv = attrs(m.group(4))
             blocks.append(Block(m.group(1), title=m.group(2), spec=m.group(3), key=key, kv=kv, md_dir=md_dir))
+            i += 1; continue
+        specs = re.findall(r"!\[(.*?)\]\((.*?)\)(\{[^}]*\})?", st)
+        if st.startswith("![") and len(specs) == 2:
+            flush()
+            imgs = []
+            for title, p, at in specs:
+                _, key, kv = attrs(at)
+                full = os.path.normpath(os.path.join(md_dir if p.startswith("..") else ROOT, p))
+                imgs.append(Block("img", title=title, path=full, key=key, kv=kv))
+            blocks.append(Block("imgpair", imgs=imgs))
             i += 1; continue
         m = re.match(r"^!\[(.*?)\]\((.*?)\)(.*)$", st)
         if m:
@@ -550,9 +572,11 @@ class PZDoc:
             self.inline(p, mark + it)
 
     def stub(self, text):
+        """!stub[видимый текст || подробности только для pz_todo.md] — в записке короткая отметка."""
+        vis, _, more = text.partition("||")
         p = self.para("", align="justify")
-        self.run(p, f"[ЗАГЛУШКА: {self.resolve(text)}]", highlight=True)
-        self.todo.append(f"Заглушка ({self.chapter or '—'}): {text}")
+        self.run(p, f"[ЗАГЛУШКА: {self.resolve(vis.strip())}]", highlight=True)
+        self.todo.append(f"Заглушка ({self.chapter or '—'}): {vis.strip()}" + (f" — {more.strip()}" if more.strip() else ""))
 
     # ---------------------------------------------------------------- таблицы
     def _tblpr(self, tbl, widths, borders=True, inside_v=True, center=False):
@@ -668,21 +692,92 @@ class PZDoc:
     def caption_below(self, no, title):
         self.para(f"Рисунок {no} {DASH} {self.resolve(title)}", indent=False, align="center", after=8)
 
-    def image(self, title, path, key, kv):
+    # обрезка снимков клиента 1440×900: «form» — без панели разделов, вкладок и строки состояния,
+    # «main» — без строки состояния; явная рамка — crop=x0,y0,x1,y1 (пиксели исходного снимка)
+    CROPS = {"form": (212, 93, 1440, 876), "main": (0, 0, 1440, 876)}
+
+    def _picture(self, path, kv):
         from PIL import Image
+        im = Image.open(path)
+        crop = kv.get("crop")
+        if crop:
+            box = self.CROPS.get(crop) or tuple(int(v) for v in crop.split(","))
+            w0, h0 = im.size
+            box = (box[0], box[1], min(box[2], w0), min(box[3], h0))
+            im = im.crop(box)
+            if "trim" in kv:                       # снизу: пустые строки одного цвета
+                import numpy as np
+                a = np.asarray(im.convert("L")).astype(int)
+                y = a.shape[0]
+                while y > 40 and a[y - 1].max() - a[y - 1].min() < 6:
+                    y -= 1
+                im = im.crop((0, 0, im.size[0], min(im.size[1], y + 6)))
+            if "squeeze" in kv:                    # пустые полосы внутри снимка (как у окна меньшей высоты)
+                import numpy as np
+                from PIL import Image as _I
+                a = np.asarray(im.convert("L")).astype(int)
+                mode = np.array([np.bincount(r).argmax() for r in a])
+                blank = [(np.abs(r - m) > 6).sum() <= 6 for r, m in zip(a, mode)]   # допускаются линии рамок
+                keep, run = [], 0
+                for y, b in enumerate(blank):
+                    run = run + 1 if b else 0
+                    if not b or run <= 10:
+                        keep.append(y)
+                rgb = np.asarray(im.convert("RGB"))[keep]
+                im = _I.fromarray(rgb)
+            os.makedirs(os.path.join(OUT, ".img"), exist_ok=True)
+            path = os.path.join(OUT, ".img", f"{os.path.splitext(os.path.basename(path))[0]}_{crop.replace(',', '-')}.png")
+            im.save(path)
+        return path, im.size
+
+    def image(self, title, path, key, kv):
         no = self.number("Рисунок", key)
         if not os.path.exists(path):
             self.para(f"[ВСТАВИТЬ СНИМОК: {os.path.relpath(path, ROOT)}]", indent=False, align="center",
                       keep_next=True, before=6).runs[0].font.highlight_color = 7
             self.todo.append(f"Нет снимка: {os.path.relpath(path, ROOT)} (рисунок {no})")
         else:
-            w, h = Image.open(path).size
+            path, (w, h) = self._picture(path, kv)
             width = float(kv.get("width", 16.5))
             max_h = float(kv.get("maxh", 21.0))
             width = min(width, max_h * w / h)
             p = self.para("", indent=False, align="center", keep_next=True, before=6, line=1.0)
             p.add_run().add_picture(path, width=Cm(width))
         self.caption_below(no, title)
+
+    def image_pair(self, imgs):
+        """Два небольших снимка рядом: таблица без рамок 1×2, у каждого своя подпись под снимком."""
+        tbl = self.d.add_table(rows=1, cols=2)
+        self._append(tbl._tbl)
+        half = TEXT_WIDTH // 2
+        self._tblpr(tbl, [half, TEXT_WIDTH - half], borders=False, center=True)
+        tbl.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
+        for j, b in enumerate(imgs):
+            no = self.number("Рисунок", b.key)
+            cell = tbl.cell(0, j)
+            va = OxmlElement("w:vAlign")          # снимки разной высоты: подписи на одной линии
+            va.set(qn("w:val"), "bottom")
+            cell._tc.get_or_add_tcPr().append(va)
+            p = cell.paragraphs[0]
+            p.paragraph_format.first_line_indent = Cm(0)
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.keep_with_next = True
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if not os.path.exists(b.path):
+                self.run(p, f"[ВСТАВИТЬ СНИМОК: {os.path.relpath(b.path, ROOT)}]", highlight=True)
+                self.todo.append(f"Нет снимка: {os.path.relpath(b.path, ROOT)} (рисунок {no})")
+            else:
+                path, (w, h) = self._picture(b.path, b.kv)
+                width = min(float(b.kv.get("width", 8.0)), 8.2, float(b.kv.get("maxh", 21.0)) * w / h)
+                p.add_run().add_picture(path, width=Cm(width))
+            cp = cell.add_paragraph()
+            cp.paragraph_format.first_line_indent = Cm(0)
+            cp.paragraph_format.space_before = Pt(0)
+            cp.paragraph_format.space_after = Pt(8)
+            cp.paragraph_format.line_spacing = 1.0
+            cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            self.inline(cp, f"Рисунок {no} {DASH} {b.title}")
+        self.para("", indent=False, line=1.0)
 
     # ---------------------------------------------------------------- код-рисунок (основная часть)
     @staticmethod
@@ -710,40 +805,35 @@ class PZDoc:
         no = self.number("Рисунок", key)
         if self._height(lines, size, TEXT_WIDTH) > limit:
             self.todo.append(f"Рисунок {no} (код) выше страницы даже при 7 пт — разделить")
-        # рамка с кодом и подпись — две строки одной таблицы: строка с подписью без рамки, обе строки неразрывны,
-        # поэтому подпись не отрывается от кода на следующую страницу
-        tbl = self.d.add_table(rows=2, cols=1)
-        self._append(tbl._tbl)
-        self._tblpr(tbl, [TEXT_WIDTH], borders=False, center=True)
-        for row in tbl.rows:
-            row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
-        tcpr = tbl.cell(0, 0)._tc.get_or_add_tcPr()
-        tcb = OxmlElement("w:tcBorders")
-        for side in ("top", "left", "bottom", "right"):
-            e = OxmlElement(f"w:{side}")
-            e.set(qn("w:val"), "single")
-            e.set(qn("w:sz"), "4")
-            e.set(qn("w:space"), "0")
-            e.set(qn("w:color"), "000000")
-            tcb.append(e)
-        tcpr.append(tcb)
-        cell = tbl.cell(0, 0)
+        # в рамке только код, подпись — отдельный абзац под рамкой (требование студента 28.10.2026).
+        # Рамка — границы абзацев (w:pBdr): соседние абзацы с одинаковыми границами сливаются в один
+        # прямоугольник и в Word, и в LibreOffice, а «не отрывать от следующего» у каждого абзаца кода
+        # удерживает подпись на странице кода (у таблицы LibreOffice это свойство теряет).
         for k, s in enumerate(lines):
-            p = cell.paragraphs[0] if k == 0 else cell.add_paragraph()
+            p = self.para("", indent=False, align="left", keep_next=True, line=1.0)
             pf = p.paragraph_format
-            pf.first_line_indent = Cm(0)
-            pf.space_after = Pt(0)
-            pf.line_spacing = 1.0
-            pf.keep_with_next = True
             pf.keep_together = True
-            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            pf.left_indent = Cm(0.15)
+            pf.right_indent = Cm(0.15)
+            ppr = p._p.get_or_add_pPr()
+            bdr = OxmlElement("w:pBdr")
+            for side in ("top", "left", "bottom", "right"):
+                e = OxmlElement(f"w:{side}")
+                e.set(qn("w:val"), "single")
+                e.set(qn("w:sz"), "4")
+                e.set(qn("w:space"), "3")
+                e.set(qn("w:color"), "000000")
+                bdr.append(e)
+            # pBdr стоит в pPr перед spacing/ind/jc (порядок схемы OOXML)
+            anchor = next((ppr.find(qn(f"w:{t}")) for t in ("shd", "tabs", "suppressAutoHyphens", "spacing", "ind", "jc")
+                           if ppr.find(qn(f"w:{t}")) is not None), None)
+            if anchor is not None:
+                anchor.addprevious(bdr)
+            else:
+                ppr.append(bdr)
             self.run(p, s.replace("\t", "    ") if s.strip() else " ", size=size)
         self.code_checks.append((f"Рисунок {no}", next((s.strip() for s in lines if s.strip()), "")))
-        cp = tbl.cell(1, 0).paragraphs[0]
-        cp.paragraph_format.first_line_indent = Cm(0)
-        cp.paragraph_format.space_before = Pt(4)
-        cp.paragraph_format.space_after = Pt(0)
-        cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        cp = self.para("", indent=False, align="center", before=4, line=1.0)
         self.inline(cp, f"Рисунок {no} {DASH} {title}")
         self.para("", indent=False, line=1.0)
 
@@ -856,6 +946,8 @@ class PZDoc:
                 self.table(b.title, b.key, b.kv, b.rows)
             elif k == "img":
                 self.image(b.title, b.path, b.key, b.kv)
+            elif k == "imgpair":
+                self.image_pair(b.imgs)
             elif k == "code":
                 self.code(b.title, b.spec, b.key, b.kv, b.md_dir)
             elif k == "listing":
@@ -887,6 +979,11 @@ class PZDoc:
                 b.key = "tab:api-objects"
             if b.kind == "filelist":
                 b.key = f"tab:files-{b.lang}"
+            if b.kind == "imgpair":
+                for im in b.imgs:
+                    counters["Рисунок"] = counters.get("Рисунок", 0) + 1
+                    if im.key:
+                        self.numbers[im.key] = f"{chapter}.{counters['Рисунок']}" if chapter else str(counters["Рисунок"])
             if kind:
                 counters[kind] = counters.get(kind, 0) + 1
                 if b.key:
@@ -1165,6 +1262,43 @@ def report(pz, pdf, n, pages, hp, hp2):
         if cap_pages and key and not any(key in flat[c] for c in cap_pages):
             broken.append(no)
     lines.append("Разрывы кода (подпись и начало на разных страницах): " + (", ".join(broken) if broken else "нет"))
+    # объём по разделам: весь документ ≤ 100 с. с учётом недописанного, сейчас ≤ TOTAL_LIMIT (требование 28.10.2026)
+    spans, firsts = [], [(t, p) for (lvl, t, _), p in zip(pz.headings, hp2) if lvl == 1]
+    for k, (t, p) in enumerate(firsts):
+        end = firsts[k + 1][1] if k + 1 < len(firsts) else n + 1
+        spans.append((t, p, end - p))
+    front = next((p for t, p, _ in spans if re.match(r"^1\s", t)), 1) - 1
+    rows = [("Титул, ТЗ, реферат, содержание, введение", front, BUDGET["front"])]
+    tail = 0
+    for t, p, cnt in spans:
+        m = re.match(r"^(\d+)\s", t) or re.match(r"^ПРИЛОЖЕНИЕ\s+([А-Я])", t, flags=re.I)
+        if m:
+            rows.append((t[:60], cnt, BUDGET.get(m.group(1))))
+        elif t.upper().startswith(("ЗАКЛЮЧЕНИЕ", "СПИСОК")):
+            tail += cnt
+    rows.append(("Заключение и список источников", tail, BUDGET["tail"]))
+    lines.append("Объём по разделам (страниц / бюджет):")
+    for t, cnt, b in rows:
+        lines.append(f"  {t}: {cnt}" + (f" / {b}" if b else "") + ("  <-- ПРЕВЫШЕНИЕ" if b and cnt > b else ""))
+    if n > TOTAL_LIMIT:
+        lines.append(f"ОШИБКА: всего {n} страниц > {TOTAL_LIMIT} (весь курсовой — около 100 с., резерв под недописанное)")
+    # текст: ссылки на ТЗ, перечисления источников, число источников
+    errs = []
+    for name in [x.strip() for x in read(ORDER).split("\n") if x.strip() and not x.startswith("#")]:
+        txt_md = re.sub(r"<!--.*?-->", "", read(os.path.join(PZ, name)), flags=re.S)
+        for ln, row in enumerate(txt_md.split("\n"), 1):
+            if name != "00-tz.md" and re.search(r"\bТЗ\b|техническ\w* задани", row):
+                errs.append(f"ссылка на ТЗ: {name}:{ln}")
+            if re.search(r"\[\d+\s*[,;–-]\s*\d+[^\]]*\]", row):
+                errs.append(f"несколько источников в одной ссылке: {name}:{ln}")
+    toc = next((i for i, t in enumerate(pages) if "СОДЕРЖАНИЕ" in t), 0)
+    for i, t in enumerate(pages[toc + 1:], toc + 2):
+        if re.search(r"\bТЗ\b|техническ\w*\s+задани", t):
+            errs.append(f"«ТЗ» в тексте PDF, страница {i}")
+    src = len(re.findall(r"^\d+\.\s", read(os.path.join(PZ, "80-literatura.md")), flags=re.M))
+    if src > 4:
+        errs.append(f"источников {src} > 4")
+    lines += [f"ОШИБКА: {e}" for e in errs] or ["Ссылки на ТЗ, перечисления источников: нет; источников: " + str(src)]
     lines.append(f"Заглушек и замечаний: {len(pz.todo)}")
     txt = "\n".join(lines)
     print(txt)
