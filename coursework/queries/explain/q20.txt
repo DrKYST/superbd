@@ -8,44 +8,44 @@ SELECT at, kind, amount, volume_mb FROM api.v_revenue_items WHERE at >= date_tru
 -- Результат (первые строки)
               at               |  kind  | amount | volume_mb 
 -------------------------------+--------+--------+-----------
- 2026-10-29 01:49:43.878582+03 | трафик |  47.78 |  1075.000
- 2026-10-29 01:45:20.523438+03 | трафик |  28.61 |   938.000
- 2026-10-29 01:40:57.168295+03 | трафик |  57.07 |   801.000
- 2026-10-29 01:36:33.813152+03 | трафик |  43.33 |   664.000
- 2026-10-29 01:32:10.458009+03 | трафик |  33.99 |   527.000
- 2026-10-29 01:27:47.102865+03 | трафик |  16.19 |   390.000
- 2026-10-29 01:23:23.747722+03 | трафик |  17.67 |   253.000
- 2026-10-29 01:19:00.392579+03 | трафик |   7.35 |   116.000
- 2026-10-29 01:14:37.037436+03 | трафик | 150.83 |  2379.000
- 2026-10-29 01:10:13.682292+03 | трафик | 103.36 |  2242.000
+ 2026-10-30 15:59:42.917354+03 | трафик |  95.57 |  1075.000
+ 2026-10-30 15:21:19.60066+03  | трафик |  57.22 |   938.000
+ 2026-10-30 14:42:56.283966+03 | трафик | 114.14 |   801.000
+ 2026-10-30 14:04:32.967271+03 | трафик |  86.65 |   664.000
+ 2026-10-30 13:26:09.650577+03 | трафик |  67.98 |   527.000
+ 2026-10-30 12:47:46.333883+03 | трафик |  32.37 |   390.000
+ 2026-10-30 12:09:23.017189+03 | трафик |  35.34 |   253.000
+ 2026-10-30 11:30:59.700495+03 | трафик |  14.70 |   116.000
+ 2026-10-30 10:52:36.383801+03 | трафик | 301.66 |  2379.000
+ 2026-10-30 10:14:13.067106+03 | трафик | 206.71 |  2242.000
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 26.921 ms  plan:
+duration: 19.622 ms  plan:
 Query Text: SELECT at, kind, amount, volume_mb FROM api.v_revenue_items WHERE at >= date_trunc('month', current_date) ORDER BY at DESC LIMIT 10;
-Limit  (cost=4753.28..4753.31 rows=10 width=104) (actual rows=10.00 loops=1)
-  Buffers: shared hit=1780
-  ->  Sort  (cost=4753.28..4827.99 rows=29883 width=104) (actual rows=10.00 loops=1)
+Limit  (cost=4837.17..4837.19 rows=10 width=104) (actual rows=10.00 loops=1)
+  Buffers: shared hit=1790
+  ->  Sort  (cost=4837.17..4914.10 rows=30772 width=104) (actual rows=10.00 loops=1)
         Sort Key: v_revenue_items.at DESC
         Sort Method: top-N heapsort  Memory: 25kB
-        Buffers: shared hit=1780
-        ->  Subquery Scan on v_revenue_items  (cost=324.26..4107.52 rows=29883 width=104) (actual rows=922.00 loops=1)
-              Buffers: shared hit=1777
-              ->  Append  (cost=324.26..3808.69 rows=29883 width=114) (actual rows=922.00 loops=1)
-                    Buffers: shared hit=1777
+        Buffers: shared hit=1790
+        ->  Subquery Scan on v_revenue_items  (cost=324.26..4172.20 rows=30772 width=104) (actual rows=957.00 loops=1)
+              Buffers: shared hit=1787
+              ->  Append  (cost=324.26..3864.48 rows=30772 width=114) (actual rows=957.00 loops=1)
+                    Buffers: shared hit=1787
                     ->  Subquery Scan on "*SELECT* 1"  (cost=324.26..1052.86 rows=4001 width=86) (actual rows=10.00 loops=1)
-                          Buffers: shared hit=1140
+                          Buffers: shared hit=1142
                           ->  Hash Join  (cost=324.26..1002.85 rows=4001 width=58) (actual rows=10.00 loops=1)
                                 Hash Cond: (c.subscriber_id = s.id)
-                                Buffers: shared hit=1140
+                                Buffers: shared hit=1142
                                 InitPlan 1
                                   ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
-                                        Buffers: shared hit=778
+                                        Buffers: shared hit=780
                                 ->  Append  (cost=0.00..658.08 rows=4001 width=16) (actual rows=10.00 loops=1)
-                                      Buffers: shared hit=996
+                                      Buffers: shared hit=998
                                       ->  Seq Scan on contract_p1 c_1  (cost=0.00..21.32 rows=136 width=16) (actual rows=10.00 loops=1)
                                             Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
                                             Rows Removed by Filter: 399
-                                            Buffers: shared hit=785
+                                            Buffers: shared hit=787
                                       ->  Seq Scan on contract_p2 c_2  (cost=0.00..20.27 rows=126 width=16) (actual rows=0.00 loops=1)
                                             Filter: ((provider_id = ANY ((InitPlan 1).col1)) AND ((connected_on)::timestamp with time zone >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)))
                                             Rows Removed by Filter: 379
@@ -171,20 +171,20 @@ Limit  (cost=4753.28..4753.31 rows=10 width=104) (actual rows=10.00 loops=1)
                                       Buffers: shared hit=144
                                       ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
                                             Buffers: shared hit=144
-                    ->  Subquery Scan on "*SELECT* 2"  (cost=1054.20..2606.42 rows=25882 width=88) (actual rows=912.00 loops=1)
-                          Buffers: shared hit=637
-                          ->  Hash Join  (cost=1054.20..2347.60 rows=25882 width=62) (actual rows=912.00 loops=1)
+                    ->  Subquery Scan on "*SELECT* 2"  (cost=1054.20..2657.75 rows=26771 width=88) (actual rows=947.00 loops=1)
+                          Buffers: shared hit=645
+                          ->  Hash Join  (cost=1054.20..2390.04 rows=26771 width=62) (actual rows=947.00 loops=1)
                                 Hash Cond: (se.contract_id = c_33.id)
-                                Buffers: shared hit=637
+                                Buffers: shared hit=645
                                 InitPlan 2
                                   ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
                                         Buffers: shared hit=32
-                                ->  Append  (cost=0.29..937.83 rows=25878 width=24) (actual rows=25845.00 loops=1)
-                                      Buffers: shared hit=243
+                                ->  Append  (cost=0.29..968.05 rows=26767 width=24) (actual rows=26734.00 loops=1)
+                                      Buffers: shared hit=251
                                       Subplans Removed: 11
-                                      ->  Seq Scan on session_2026_q4 se_1  (cost=0.00..758.90 rows=25845 width=24) (actual rows=25845.00 loops=1)
+                                      ->  Seq Scan on session_2026_q4 se_1  (cost=0.00..784.68 rows=26734 width=24) (actual rows=26734.00 loops=1)
                                             Filter: (started_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))
-                                            Buffers: shared hit=242
+                                            Buffers: shared hit=250
                                       ->  Seq Scan on session_2027_q1 se_2  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
                                             Filter: (started_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))
                                       ->  Seq Scan on session_2027_q2 se_3  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)

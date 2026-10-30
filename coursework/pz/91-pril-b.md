@@ -1,10 +1,6 @@
 # Приложение Б // Листинг серверного приложения
 
-<!-- Ключевые объекты db/ (миграции, данные, тесты) в сокращении; полный состав файлов — таблица, генерируемая сборщиком (!filelist:sql). -->
-
-Серверное приложение состоит из сценариев каталога db: создание базы (create_db.sql), пересборка (build.sql), миграции, данные и тесты. Состав сценариев приведён в таблице [@tab:files-sql]; ниже приведены ключевые объекты в сокращении (листинги [@lst:b-create-db]–[@lst:b-test]), пропущенные строки отмечены знаком «…».
-
-!filelist:sql
+<!-- Ключевые объекты db/ (миграции, данные, тесты) в сокращении; только текст кода, без подписей и таблиц (требование студента). -->
 
 !listing[Создание базы данных и роли-владельца (create_db.sql)](db/create_db.sql#file;full){#lst:b-create-db}
 
@@ -26,6 +22,6 @@
 
 !listing[Сброс пароля (api.user_reset_password)](db/migrations/075_password_reset.sql#func:api.user_reset_password;full){#lst:b-reset}
 
-!listing[Генерация сеансов связи (seed/020_generate.sql)](db/seed/020_generate.sql#lines:193-226){#lst:b-seed limit=24}
+!listing[Генерация сеансов связи (seed/020_generate.sql)](db/seed/020_generate.sql#lines:205-250){#lst:b-seed limit=30}
 
 !listing[Помощники тестов (tests/_helpers.sql)](db/tests/_helpers.sql#lines:4-21;full){#lst:b-test}

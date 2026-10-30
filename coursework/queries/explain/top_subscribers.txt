@@ -8,19 +8,19 @@ SELECT ord, subscriber_name, subscriber_type, volume_mb, revenue, share_pct FROM
 -- Результат (первые строки)
  ord |         subscriber_name         |      subscriber_type       | volume_mb | revenue | share_pct 
 -----+---------------------------------+----------------------------+-----------+---------+-----------
-   1 | Алексеев Евгений Викторович     | Частное лицо               | 48351.282 | 5728.90 |       1.4
-   2 | Козлова Марина Михайловна       | Частное лицо               | 36117.121 | 4697.54 |       1.2
-   3 | Никитин Денис Андреевич         | Частное лицо               | 31521.438 | 4186.87 |       1.0
-   4 | Алексеева Виктория Владимировна | Частное лицо               | 30705.291 | 4011.94 |       1.0
-   5 | Литвиненко Владислав Сергеевич  | Частное лицо               | 27621.806 | 3596.62 |       0.9
-   6 | Кравченко Павел Михайлович      | Частное лицо               | 37442.166 | 3582.74 |       0.9
-   7 | Центр занятости № 16            | Государственное учреждение | 40761.235 | 3562.90 |       0.9
-   8 | Смирнов Юрий Олегович           | Частное лицо               | 41469.003 | 3541.67 |       0.9
-   9 | Кузнецов Андрей Дмитриевич      | Частное лицо               | 50189.589 | 3480.02 |       0.9
-  10 | Семёнова Людмила Николаевна     | Частное лицо               | 25759.437 | 3477.95 |       0.9
+   1 | Иванова Оксана Николаевна       | Частное лицо               | 37568.976 | 4928.58 |       1.2
+   2 | Козлова Марина Михайловна       | Частное лицо               | 32536.657 | 4826.94 |       1.2
+   3 | Алексеева Виктория Владимировна | Частное лицо               | 31098.017 | 4443.17 |       1.1
+   4 | Никитин Денис Андреевич         | Частное лицо               | 29338.610 | 4273.99 |       1.0
+   5 | Николаева Виктория Петровна     | Частное лицо               | 22758.487 | 4097.38 |       1.0
+   6 | Коваленко Алина Олеговна        | Частное лицо               | 16543.382 | 4048.53 |       1.0
+   7 | Отделение пенсионного фонда № 2 | Государственное учреждение | 38138.873 | 3860.25 |       0.9
+   8 | Алексеев Евгений Викторович     | Частное лицо               | 27736.491 | 3572.44 |       0.9
+   9 | Смирнов Юрий Олегович           | Частное лицо               | 42070.051 | 3507.03 |       0.8
+  10 | Сергеева Валентина Николаевна   | Частное лицо               | 23767.407 | 3331.79 |       0.8
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 63.157 ms  plan:
+duration: 60.489 ms  plan:
 Query Text: SELECT k.rnk::integer, s.id, s.name::text, st.name::text, k.volume_mb, k.revenue,
            round(100 * k.revenue / nullif(k.total, 0), 1)
     FROM (SELECT r.subscriber_id, sum(r.volume_mb) AS volume_mb, sum(r.amount) AS revenue,
@@ -35,42 +35,42 @@ Query Text: SELECT k.rnk::integer, s.id, s.name::text, st.name::text, k.volume_m
     JOIN core.subscriber s ON s.id = k.subscriber_id
     JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
     ORDER BY k.rnk
-Sort  (cost=36709.45..36709.47 rows=10 width=176) (actual rows=10.00 loops=1)
+Sort  (cost=36708.45..36708.47 rows=10 width=176) (actual rows=10.00 loops=1)
   Sort Key: (row_number() OVER w1)
   Sort Method: quicksort  Memory: 26kB
-  Buffers: shared hit=5535
-  ->  Hash Join  (cost=36630.30..36709.28 rows=10 width=176) (actual rows=10.00 loops=1)
+  Buffers: shared hit=5534
+  ->  Hash Join  (cost=36629.30..36708.28 rows=10 width=176) (actual rows=10.00 loops=1)
         Hash Cond: (s.subscriber_type_id = st.id)
-        Buffers: shared hit=5532
-        ->  Nested Loop  (cost=36629.05..36707.87 rows=10 width=155) (actual rows=10.00 loops=1)
-              Buffers: shared hit=5531
-              ->  Limit  (cost=36628.77..36628.77 rows=10 width=108) (actual rows=10.00 loops=1)
-                    Buffers: shared hit=5501
-                    ->  WindowAgg  (cost=36628.77..36628.80 rows=200 width=108) (actual rows=10.00 loops=1)
+        Buffers: shared hit=5531
+        ->  Nested Loop  (cost=36628.05..36706.87 rows=10 width=155) (actual rows=10.00 loops=1)
+              Buffers: shared hit=5530
+              ->  Limit  (cost=36627.77..36627.77 rows=10 width=108) (actual rows=10.00 loops=1)
+                    Buffers: shared hit=5500
+                    ->  WindowAgg  (cost=36627.77..36627.80 rows=200 width=108) (actual rows=10.00 loops=1)
                           Window: w2 AS ()
                           Storage: Memory  Maximum Storage: 32kB
-                          Buffers: shared hit=5501
-                          ->  WindowAgg  (cost=36622.32..36626.30 rows=200 width=76) (actual rows=280.00 loops=1)
+                          Buffers: shared hit=5500
+                          ->  WindowAgg  (cost=36621.32..36625.30 rows=200 width=76) (actual rows=280.00 loops=1)
                                 Window: w1 AS (ORDER BY (sum((r.amount)::numeric)), r.subscriber_id ROWS UNBOUNDED PRECEDING)
                                 Storage: Memory  Maximum Storage: 17kB
-                                Buffers: shared hit=5501
-                                ->  Sort  (cost=36622.30..36622.80 rows=200 width=68) (actual rows=280.00 loops=1)
+                                Buffers: shared hit=5500
+                                ->  Sort  (cost=36621.30..36621.80 rows=200 width=68) (actual rows=280.00 loops=1)
                                       Sort Key: (sum((r.amount)::numeric)) DESC, r.subscriber_id
                                       Sort Method: quicksort  Memory: 35kB
-                                      Buffers: shared hit=5501
-                                      ->  GroupAggregate  (cost=36586.05..36614.66 rows=200 width=68) (actual rows=280.00 loops=1)
+                                      Buffers: shared hit=5500
+                                      ->  GroupAggregate  (cost=36585.05..36613.66 rows=200 width=68) (actual rows=280.00 loops=1)
                                             Group Key: r.subscriber_id
-                                            Buffers: shared hit=5498
-                                            ->  Sort  (cost=36586.05..36592.45 rows=2561 width=68) (actual rows=7724.00 loops=1)
+                                            Buffers: shared hit=5497
+                                            ->  Sort  (cost=36585.05..36591.45 rows=2561 width=68) (actual rows=7743.00 loops=1)
                                                   Sort Key: r.subscriber_id
-                                                  Sort Method: quicksort  Memory: 482kB
-                                                  Buffers: shared hit=5498
-                                                  ->  Subquery Scan on r  (cost=324.26..36441.06 rows=2561 width=68) (actual rows=7724.00 loops=1)
+                                                  Sort Method: quicksort  Memory: 483kB
+                                                  Buffers: shared hit=5497
+                                                  ->  Subquery Scan on r  (cost=324.26..36440.06 rows=2561 width=68) (actual rows=7743.00 loops=1)
                                                         Filter: ((r.at >= '2026-01-01'::date) AND (r.at < '2026-10-01'::date))
-                                                        Rows Removed by Filter: 9856
-                                                        Buffers: shared hit=5498
-                                                        ->  Append  (cost=324.26..28758.51 rows=512170 width=114) (actual rows=17580.00 loops=1)
-                                                              Buffers: shared hit=5498
+                                                        Rows Removed by Filter: 9842
+                                                        Buffers: shared hit=5497
+                                                        ->  Append  (cost=324.26..28757.51 rows=512170 width=114) (actual rows=17585.00 loops=1)
+                                                              Buffers: shared hit=5497
                                                               ->  Subquery Scan on "*SELECT* 1"  (cost=324.26..1083.92 rows=12004 width=86) (actual rows=409.00 loops=1)
                                                                     Buffers: shared hit=424
                                                                     ->  Hash Join  (cost=324.26..933.87 rows=12004 width=58) (actual rows=409.00 loops=1)
@@ -209,40 +209,40 @@ Sort  (cost=36709.45..36709.47 rows=10 width=176) (actual rows=10.00 loops=1)
                                                                                 Buffers: shared hit=144
                                                                                 ->  Seq Scan on subscriber s_1  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
                                                                                       Buffers: shared hit=144
-                                                              ->  Subquery Scan on "*SELECT* 2"  (cost=1053.91..25113.74 rows=500166 width=88) (actual rows=17171.00 loops=1)
-                                                                    Buffers: shared hit=5074
-                                                                    ->  Hash Join  (cost=1053.91..20112.08 rows=500166 width=62) (actual rows=17171.00 loops=1)
+                                                              ->  Subquery Scan on "*SELECT* 2"  (cost=1053.91..25112.74 rows=500166 width=88) (actual rows=17176.00 loops=1)
+                                                                    Buffers: shared hit=5073
+                                                                    ->  Hash Join  (cost=1053.91..20111.08 rows=500166 width=62) (actual rows=17176.00 loops=1)
                                                                           Hash Cond: (se.contract_id = c_33.id)
-                                                                          Buffers: shared hit=5074
+                                                                          Buffers: shared hit=5073
                                                                           InitPlan 2
                                                                             ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
                                                                                   Buffers: shared hit=32
-                                                                          ->  Append  (cost=0.00..12181.21 rows=500083 width=24) (actual rows=500025.00 loops=1)
-                                                                                Buffers: shared hit=4680
-                                                                                ->  Seq Scan on session_2024_q1 se_1  (cost=0.00..80.31 rows=4131 width=24) (actual rows=4131.00 loops=1)
+                                                                          ->  Append  (cost=0.00..12180.21 rows=500083 width=24) (actual rows=500025.00 loops=1)
+                                                                                Buffers: shared hit=4679
+                                                                                ->  Seq Scan on session_2024_q1 se_1  (cost=0.00..80.49 rows=4149 width=24) (actual rows=4149.00 loops=1)
                                                                                       Buffers: shared hit=39
-                                                                                ->  Seq Scan on session_2024_q2 se_2  (cost=0.00..231.05 rows=11905 width=24) (actual rows=11905.00 loops=1)
-                                                                                      Buffers: shared hit=112
-                                                                                ->  Seq Scan on session_2024_q3 se_3  (cost=0.00..386.92 rows=19992 width=24) (actual rows=19992.00 loops=1)
+                                                                                ->  Seq Scan on session_2024_q2 se_2  (cost=0.00..229.58 rows=11858 width=24) (actual rows=11858.00 loops=1)
+                                                                                      Buffers: shared hit=111
+                                                                                ->  Seq Scan on session_2024_q3 se_3  (cost=0.00..386.76 rows=19976 width=24) (actual rows=19976.00 loops=1)
                                                                                       Buffers: shared hit=187
-                                                                                ->  Seq Scan on session_2024_q4 se_4  (cost=0.00..549.98 rows=28398 width=24) (actual rows=28398.00 loops=1)
-                                                                                      Buffers: shared hit=266
-                                                                                ->  Seq Scan on session_2025_q1 se_5  (cost=0.00..684.87 rows=35387 width=24) (actual rows=35387.00 loops=1)
-                                                                                      Buffers: shared hit=331
-                                                                                ->  Seq Scan on session_2025_q2 se_6  (cost=0.00..837.53 rows=43253 width=24) (actual rows=43253.00 loops=1)
-                                                                                      Buffers: shared hit=405
-                                                                                ->  Seq Scan on session_2025_q3 se_7  (cost=0.00..1005.49 rows=51949 width=24) (actual rows=51949.00 loops=1)
+                                                                                ->  Seq Scan on session_2024_q4 se_4  (cost=0.00..548.02 rows=28302 width=24) (actual rows=28302.00 loops=1)
+                                                                                      Buffers: shared hit=265
+                                                                                ->  Seq Scan on session_2025_q1 se_5  (cost=0.00..682.74 rows=35274 width=24) (actual rows=35274.00 loops=1)
+                                                                                      Buffers: shared hit=330
+                                                                                ->  Seq Scan on session_2025_q2 se_6  (cost=0.00..836.18 rows=43218 width=24) (actual rows=43218.00 loops=1)
+                                                                                      Buffers: shared hit=404
+                                                                                ->  Seq Scan on session_2025_q3 se_7  (cost=0.00..1005.09 rows=51909 width=24) (actual rows=51909.00 loops=1)
                                                                                       Buffers: shared hit=486
-                                                                                ->  Seq Scan on session_2025_q4 se_8  (cost=0.00..1160.30 rows=59930 width=24) (actual rows=59930.00 loops=1)
-                                                                                      Buffers: shared hit=561
-                                                                                ->  Seq Scan on session_2026_q1 se_9  (cost=0.00..1274.69 rows=65869 width=24) (actual rows=65869.00 loops=1)
+                                                                                ->  Seq Scan on session_2025_q4 se_8  (cost=0.00..1158.28 rows=59828 width=24) (actual rows=59828.00 loops=1)
+                                                                                      Buffers: shared hit=560
+                                                                                ->  Seq Scan on session_2026_q1 se_9  (cost=0.00..1274.44 rows=65844 width=24) (actual rows=65844.00 loops=1)
                                                                                       Buffers: shared hit=616
-                                                                                ->  Seq Scan on session_2026_q2 se_10  (cost=0.00..1411.02 rows=72902 width=24) (actual rows=72902.00 loops=1)
-                                                                                      Buffers: shared hit=682
-                                                                                ->  Seq Scan on session_2026_q3 se_11  (cost=0.00..1556.64 rows=80464 width=24) (actual rows=80464.00 loops=1)
-                                                                                      Buffers: shared hit=752
-                                                                                ->  Seq Scan on session_2026_q4 se_12  (cost=0.00..500.45 rows=25845 width=24) (actual rows=25845.00 loops=1)
-                                                                                      Buffers: shared hit=242
+                                                                                ->  Seq Scan on session_2026_q2 se_10  (cost=0.00..1405.52 rows=72652 width=24) (actual rows=72652.00 loops=1)
+                                                                                      Buffers: shared hit=679
+                                                                                ->  Seq Scan on session_2026_q3 se_11  (cost=0.00..1553.81 rows=80281 width=24) (actual rows=80281.00 loops=1)
+                                                                                      Buffers: shared hit=751
+                                                                                ->  Seq Scan on session_2026_q4 se_12  (cost=0.00..517.34 rows=26734 width=24) (actual rows=26734.00 loops=1)
+                                                                                      Buffers: shared hit=250
                                                                                 ->  Seq Scan on session_2027_q1 se_13  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
                                                                                 ->  Seq Scan on session_2027_q2 se_14  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
                                                                                 ->  Seq Scan on session_2027_q3 se_15  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)

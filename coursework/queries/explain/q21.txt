@@ -26,7 +26,7 @@ SELECT name, subscriber_type, city, contracts, total_count FROM api.q_tariff_sub
  Экономический колледж      | Колледж         | Донецк     |         1 |          16
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 7.970 ms  plan:
+duration: 6.942 ms  plan:
 Query Text: SELECT s.id, s.name::text, st.name::text, ci.name::text, count(*), count(*) OVER ()
     FROM core.subscriber s
     JOIN ref.subscriber_type st ON st.id = s.subscriber_type_id
@@ -41,79 +41,79 @@ Query Text: SELECT s.id, s.name::text, st.name::text, ci.name::text, count(*), c
     GROUP BY s.id, st.id, ci.id
     ORDER BY s.name, s.id
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
-Limit  (cost=2935.35..2935.36 rows=1 width=167) (actual rows=16.00 loops=1)
-  Buffers: shared hit=2355
-  ->  Sort  (cost=2935.35..2935.36 rows=1 width=167) (actual rows=16.00 loops=1)
+Limit  (cost=2926.01..2926.01 rows=1 width=167) (actual rows=16.00 loops=1)
+  Buffers: shared hit=2353
+  ->  Sort  (cost=2926.01..2926.01 rows=1 width=167) (actual rows=16.00 loops=1)
         Sort Key: ((s.name)::text), s.id
         Sort Method: quicksort  Memory: 28kB
-        Buffers: shared hit=2355
-        ->  WindowAgg  (cost=2935.30..2935.34 rows=1 width=167) (actual rows=16.00 loops=1)
+        Buffers: shared hit=2353
+        ->  WindowAgg  (cost=2925.96..2926.00 rows=1 width=167) (actual rows=16.00 loops=1)
               Window: w1 AS ()
               Storage: Memory  Maximum Storage: 18kB
-              Buffers: shared hit=2352
-              ->  GroupAggregate  (cost=2935.30..2935.33 rows=1 width=107) (actual rows=16.00 loops=1)
+              Buffers: shared hit=2350
+              ->  GroupAggregate  (cost=2925.96..2925.98 rows=1 width=107) (actual rows=16.00 loops=1)
                     Group Key: s.id, st.id, ci.id
-                    Buffers: shared hit=2352
-                    ->  Sort  (cost=2935.30..2935.31 rows=1 width=99) (actual rows=23.00 loops=1)
+                    Buffers: shared hit=2350
+                    ->  Sort  (cost=2925.96..2925.96 rows=1 width=99) (actual rows=23.00 loops=1)
                           Sort Key: s.id, st.id, ci.id
                           Sort Method: quicksort  Memory: 26kB
-                          Buffers: shared hit=2352
-                          ->  Nested Loop  (cost=2933.95..2935.29 rows=1 width=99) (actual rows=23.00 loops=1)
+                          Buffers: shared hit=2350
+                          ->  Nested Loop  (cost=2924.61..2925.95 rows=1 width=99) (actual rows=23.00 loops=1)
                                 Join Filter: (s.city_id = ci.id)
                                 Rows Removed by Join Filter: 119
-                                Buffers: shared hit=2352
-                                ->  Merge Join  (cost=2933.95..2934.02 rows=1 width=82) (actual rows=23.00 loops=1)
+                                Buffers: shared hit=2350
+                                ->  Merge Join  (cost=2924.61..2924.68 rows=1 width=82) (actual rows=23.00 loops=1)
                                       Merge Cond: (s.subscriber_type_id = st.id)
-                                      Buffers: shared hit=2329
-                                      ->  Sort  (cost=2932.65..2932.65 rows=1 width=55) (actual rows=23.00 loops=1)
+                                      Buffers: shared hit=2327
+                                      ->  Sort  (cost=2923.31..2923.31 rows=1 width=55) (actual rows=23.00 loops=1)
                                             Sort Key: s.subscriber_type_id
                                             Sort Method: quicksort  Memory: 26kB
-                                            Buffers: shared hit=2328
-                                            ->  Nested Loop  (cost=2930.95..2932.64 rows=1 width=55) (actual rows=23.00 loops=1)
+                                            Buffers: shared hit=2326
+                                            ->  Nested Loop  (cost=2921.61..2923.30 rows=1 width=55) (actual rows=23.00 loops=1)
                                                   Join Filter: (s.id = c.subscriber_id)
-                                                  Buffers: shared hit=2328
-                                                  ->  Nested Loop  (cost=2930.67..2932.24 rows=1 width=8) (actual rows=23.00 loops=1)
-                                                        Buffers: shared hit=2259
-                                                        ->  HashAggregate  (cost=2930.52..2930.61 rows=9 width=4) (actual rows=16.00 loops=1)
+                                                  Buffers: shared hit=2326
+                                                  ->  Nested Loop  (cost=2921.33..2922.89 rows=1 width=8) (actual rows=23.00 loops=1)
+                                                        Buffers: shared hit=2257
+                                                        ->  HashAggregate  (cost=2921.18..2921.27 rows=9 width=4) (actual rows=16.00 loops=1)
                                                               Group Key: x.subscriber_id
                                                               Batches: 1  Memory Usage: 32kB
-                                                              Buffers: shared hit=2222
-                                                              ->  Hash Join  (cost=578.38..2930.50 rows=9 width=4) (actual rows=157.00 loops=1)
+                                                              Buffers: shared hit=2220
+                                                              ->  Hash Join  (cost=578.38..2921.16 rows=9 width=4) (actual rows=198.00 loops=1)
                                                                     Hash Cond: ((se.contract_id = x.id) AND (se.provider_id = x.provider_id))
-                                                                    Buffers: shared hit=2222
-                                                                    ->  Append  (cost=0.28..2350.98 rows=271 width=8) (actual rows=157.00 loops=1)
-                                                                          Buffers: shared hit=2004
+                                                                    Buffers: shared hit=2220
+                                                                    ->  Append  (cost=0.28..2341.68 rows=262 width=8) (actual rows=198.00 loops=1)
+                                                                          Buffers: shared hit=2002
                                                                           Subplans Removed: 14
-                                                                          ->  Bitmap Heap Scan on session_2026_q1 se_1  (cost=24.47..680.85 rows=79 width=8) (actual rows=54.00 loops=1)
+                                                                          ->  Bitmap Heap Scan on session_2026_q1 se_1  (cost=24.71..681.69 rows=77 width=8) (actual rows=60.00 loops=1)
                                                                                 Recheck Cond: (tariff_id = 8)
                                                                                 Filter: ((provider_id = ANY ('{1}'::integer[])) AND (started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date))
-                                                                                Rows Removed by Filter: 2069
-                                                                                Heap Blocks: exact=593
-                                                                                Buffers: shared hit=599
-                                                                                ->  Bitmap Index Scan on session_2026_q1_tariff_id_idx  (cost=0.00..24.45 rows=2154 width=0) (actual rows=2123.00 loops=1)
+                                                                                Rows Removed by Filter: 2139
+                                                                                Heap Blocks: exact=601
+                                                                                Buffers: shared hit=607
+                                                                                ->  Bitmap Index Scan on session_2026_q1_tariff_id_idx  (cost=0.00..24.69 rows=2186 width=0) (actual rows=2199.00 loops=1)
                                                                                       Index Cond: (tariff_id = 8)
                                                                                       Index Searches: 1
                                                                                       Buffers: shared hit=6
-                                                                          ->  Bitmap Heap Scan on session_2026_q2 se_2  (cost=31.38..761.04 rows=91 width=8) (actual rows=52.00 loops=1)
+                                                                          ->  Bitmap Heap Scan on session_2026_q2 se_2  (cost=30.04..753.37 rows=83 width=8) (actual rows=64.00 loops=1)
                                                                                 Recheck Cond: (tariff_id = 8)
                                                                                 Filter: ((provider_id = ANY ('{1}'::integer[])) AND (started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date))
-                                                                                Rows Removed by Filter: 2374
-                                                                                Heap Blocks: exact=667
-                                                                                Buffers: shared hit=670
-                                                                                ->  Bitmap Index Scan on session_2026_q2_tariff_id_idx  (cost=0.00..31.36 rows=2542 width=0) (actual rows=2426.00 loops=1)
+                                                                                Rows Removed by Filter: 2299
+                                                                                Heap Blocks: exact=666
+                                                                                Buffers: shared hit=669
+                                                                                ->  Bitmap Index Scan on session_2026_q2_tariff_id_idx  (cost=0.00..30.02 rows=2364 width=0) (actual rows=2363.00 loops=1)
                                                                                       Index Cond: (tariff_id = 8)
                                                                                       Index Searches: 1
                                                                                       Buffers: shared hit=3
-                                                                          ->  Bitmap Heap Scan on session_2026_q3 se_3  (cost=31.34..830.91 rows=87 width=8) (actual rows=51.00 loops=1)
+                                                                          ->  Bitmap Heap Scan on session_2026_q3 se_3  (cost=30.94..828.49 rows=88 width=8) (actual rows=74.00 loops=1)
                                                                                 Recheck Cond: (tariff_id = 8)
                                                                                 Filter: ((provider_id = ANY ('{1}'::integer[])) AND (started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date))
-                                                                                Rows Removed by Filter: 2437
-                                                                                Heap Blocks: exact=732
-                                                                                Buffers: shared hit=735
-                                                                                ->  Bitmap Index Scan on session_2026_q3_tariff_id_idx  (cost=0.00..31.32 rows=2537 width=0) (actual rows=2488.00 loops=1)
+                                                                                Rows Removed by Filter: 2524
+                                                                                Heap Blocks: exact=722
+                                                                                Buffers: shared hit=726
+                                                                                ->  Bitmap Index Scan on session_2026_q3_tariff_id_idx  (cost=0.00..30.91 rows=2483 width=0) (actual rows=2598.00 loops=1)
                                                                                       Index Cond: (tariff_id = 8)
                                                                                       Index Searches: 1
-                                                                                      Buffers: shared hit=3
+                                                                                      Buffers: shared hit=4
                                                                     ->  Hash  (cost=398.04..398.04 rows=12004 width=12) (actual rows=12002.00 loops=1)
                                                                           Buckets: 16384  Batches: 1  Memory Usage: 644kB
                                                                           Buffers: shared hit=218

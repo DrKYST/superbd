@@ -8,15 +8,15 @@ SELECT provider_group, providers, contracts, volume_mb, revenue, share_pct FROM 
 -- Результат (первые строки)
      provider_group      | providers | contracts |   volume_mb   |   revenue   | share_pct 
 -------------------------+-----------+-----------+---------------+-------------+-----------
- ООО «Вега-Телеком»      |         1 |       401 |   4193368.115 |   445001.53 |       3.8
- «Альфа-Телеком»         |         1 |       390 |   3927555.158 |   432449.61 |       3.7
- «СфераЛинк»             |         1 |       397 |   3888078.717 |   421136.56 |       3.6
- ООО «АльфаЛинк»         |         1 |       382 |   3978916.720 |   414068.33 |       3.5
- Прочие (27 провайдеров) |        27 |      9083 |  93776433.991 | 10034014.78 |      85.4
- Итого                   |        31 |     10653 | 109764352.701 | 11746670.81 |     100.0
+ «Альфа-Телеком»         |         1 |       389 |   4008569.031 |   443522.89 |       3.8
+ ООО «Вега-Телеком»      |         1 |       401 |   4132177.524 |   438290.12 |       3.7
+ «СфераЛинк»             |         1 |       397 |   3969853.844 |   427116.67 |       3.6
+ ПАО «МегаЛинк»          |         1 |       383 |   3944294.212 |   423138.56 |       3.6
+ Прочие (27 провайдеров) |        27 |      9080 |  93535538.411 | 10024017.66 |      85.3
+ Итого                   |        31 |     10650 | 109590433.022 | 11756085.90 |     100.0
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 759.539 ms  plan:
+duration: 791.935 ms  plan:
 Query Text: WITH x AS (            -- провайдер: итоги за период, место по выручке, общий итог
         SELECT p.id, p.display_name, k.contracts, r.volume_mb, r.revenue,
                -- провайдер без выручки (NULL после левого соединения) — в конец, а не первым (NULL при DESC идёт первым)
@@ -61,33 +61,33 @@ Query Text: WITH x AS (            -- провайдер: итоги за пер
     WHERE p_grain IS NOT NULL
     GROUP BY x.grp, t.provider_group, t.providers, d.period
     ORDER BY 4 NULLS FIRST, 1
-Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
+Sort  (cost=73965.68..73965.99 rows=125 width=185) (actual rows=51.00 loops=1)
   Sort Key: (NULL::date) NULLS FIRST, t.ord
   Sort Method: quicksort  Memory: 30kB
-  Buffers: shared hit=11337
+  Buffers: shared hit=11335
   CTE x
-    ->  WindowAgg  (cost=37127.39..37127.46 rows=9 width=144) (actual rows=31.00 loops=1)
+    ->  WindowAgg  (cost=37126.27..37126.34 rows=9 width=144) (actual rows=31.00 loops=1)
           Window: w2 AS ()
           Storage: Memory  Maximum Storage: 20kB
-          Buffers: shared hit=5745
-          ->  WindowAgg  (cost=37127.14..37127.30 rows=9 width=116) (actual rows=31.00 loops=1)
+          Buffers: shared hit=5744
+          ->  WindowAgg  (cost=37126.02..37126.18 rows=9 width=116) (actual rows=31.00 loops=1)
                 Window: w1 AS (ORDER BY (sum((i_1.amount)::numeric)), p.id ROWS UNBOUNDED PRECEDING)
                 Storage: Memory  Maximum Storage: 17kB
-                Buffers: shared hit=5745
-                ->  Sort  (cost=37127.12..37127.15 rows=9 width=108) (actual rows=31.00 loops=1)
+                Buffers: shared hit=5744
+                ->  Sort  (cost=37126.00..37126.03 rows=9 width=108) (actual rows=31.00 loops=1)
                       Sort Key: (sum((i_1.amount)::numeric)) DESC NULLS LAST, p.id
                       Sort Method: quicksort  Memory: 27kB
-                      Buffers: shared hit=5745
-                      ->  Hash Right Join  (cost=37126.18..37126.98 rows=9 width=108) (actual rows=31.00 loops=1)
+                      Buffers: shared hit=5744
+                      ->  Hash Right Join  (cost=37125.06..37125.86 rows=9 width=108) (actual rows=31.00 loops=1)
                             Hash Cond: (c_66.provider_id = p.id)
-                            Buffers: shared hit=5742
-                            ->  HashAggregate  (cost=503.84..504.14 rows=30 width=12) (actual rows=30.00 loops=1)
+                            Buffers: shared hit=5741
+                            ->  HashAggregate  (cost=503.72..504.02 rows=30 width=12) (actual rows=30.00 loops=1)
                                   Group Key: c_66.provider_id
                                   Batches: 1  Memory Usage: 32kB
                                   Buffers: shared hit=218
-                                  ->  Append  (cost=0.00..450.93 rows=10581 width=4) (actual rows=10653.00 loops=1)
+                                  ->  Append  (cost=0.00..450.87 rows=10569 width=4) (actual rows=10650.00 loops=1)
                                         Buffers: shared hit=218
-                                        ->  Seq Scan on contract_p1 c_67  (cost=0.00..13.13 rows=367 width=4) (actual rows=370.00 loops=1)
+                                        ->  Seq Scan on contract_p1 c_67  (cost=0.00..13.13 rows=366 width=4) (actual rows=370.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 39
                                               Buffers: shared hit=7
@@ -95,37 +95,37 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 40
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p3 c_69  (cost=0.00..12.68 rows=331 width=4) (actual rows=332.00 loops=1)
+                                        ->  Seq Scan on contract_p3 c_69  (cost=0.00..12.68 rows=330 width=4) (actual rows=332.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 47
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p4 c_70  (cost=0.00..12.68 rows=345 width=4) (actual rows=351.00 loops=1)
+                                        ->  Seq Scan on contract_p4 c_70  (cost=0.00..12.68 rows=344 width=4) (actual rows=350.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
-                                              Rows Removed by Filter: 28
+                                              Rows Removed by Filter: 29
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p5 c_71  (cost=0.00..14.33 rows=371 width=4) (actual rows=374.00 loops=1)
+                                        ->  Seq Scan on contract_p5 c_71  (cost=0.00..14.33 rows=369 width=4) (actual rows=373.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
-                                              Rows Removed by Filter: 48
+                                              Rows Removed by Filter: 49
                                               Buffers: shared hit=8
-                                        ->  Seq Scan on contract_p6 c_72  (cost=0.00..14.40 rows=375 width=4) (actual rows=382.00 loops=1)
+                                        ->  Seq Scan on contract_p6 c_72  (cost=0.00..14.40 rows=374 width=4) (actual rows=381.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
-                                              Rows Removed by Filter: 45
+                                              Rows Removed by Filter: 46
                                               Buffers: shared hit=8
                                         ->  Seq Scan on contract_p7 c_73  (cost=0.00..13.22 rows=381 width=4) (actual rows=382.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 33
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p8 c_74  (cost=0.00..14.57 rows=384 width=4) (actual rows=390.00 loops=1)
+                                        ->  Seq Scan on contract_p8 c_74  (cost=0.00..14.57 rows=384 width=4) (actual rows=389.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
-                                              Rows Removed by Filter: 48
+                                              Rows Removed by Filter: 49
                                               Buffers: shared hit=8
                                         ->  Seq Scan on contract_p9 c_75  (cost=0.00..13.15 rows=359 width=4) (actual rows=364.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 46
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p10 c_76  (cost=0.00..13.04 rows=350 width=4) (actual rows=351.00 loops=1)
+                                        ->  Seq Scan on contract_p10 c_76  (cost=0.00..13.04 rows=349 width=4) (actual rows=350.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
-                                              Rows Removed by Filter: 52
+                                              Rows Removed by Filter: 53
                                               Buffers: shared hit=7
                                         ->  Seq Scan on contract_p11 c_77  (cost=0.00..13.11 rows=353 width=4) (actual rows=356.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
@@ -135,7 +135,7 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 51
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p13 c_79  (cost=0.00..14.71 rows=403 width=4) (actual rows=401.00 loops=1)
+                                        ->  Seq Scan on contract_p13 c_79  (cost=0.00..14.71 rows=402 width=4) (actual rows=401.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 46
                                               Buffers: shared hit=8
@@ -143,15 +143,15 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 47
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p15 c_81  (cost=0.00..12.64 rows=335 width=4) (actual rows=335.00 loops=1)
+                                        ->  Seq Scan on contract_p15 c_81  (cost=0.00..12.64 rows=334 width=4) (actual rows=335.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 41
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p16 c_82  (cost=0.00..12.41 rows=324 width=4) (actual rows=327.00 loops=1)
+                                        ->  Seq Scan on contract_p16 c_82  (cost=0.00..12.41 rows=325 width=4) (actual rows=327.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 34
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p17 c_83  (cost=0.00..14.31 rows=382 width=4) (actual rows=383.00 loops=1)
+                                        ->  Seq Scan on contract_p17 c_83  (cost=0.00..14.31 rows=381 width=4) (actual rows=383.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 38
                                               Buffers: shared hit=8
@@ -167,7 +167,7 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 41
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p21 c_87  (cost=0.00..12.46 rows=324 width=4) (actual rows=324.00 loops=1)
+                                        ->  Seq Scan on contract_p21 c_87  (cost=0.00..12.46 rows=323 width=4) (actual rows=324.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 40
                                               Buffers: shared hit=7
@@ -195,28 +195,28 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 49
                                               Buffers: shared hit=8
-                                        ->  Seq Scan on contract_p28 c_94  (cost=0.00..12.61 rows=317 width=4) (actual rows=321.00 loops=1)
+                                        ->  Seq Scan on contract_p28 c_94  (cost=0.00..12.61 rows=316 width=4) (actual rows=322.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
-                                              Rows Removed by Filter: 53
+                                              Rows Removed by Filter: 52
                                               Buffers: shared hit=7
                                         ->  Seq Scan on contract_p29 c_95  (cost=0.00..12.96 rows=344 width=4) (actual rows=345.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                               Rows Removed by Filter: 52
                                               Buffers: shared hit=7
-                                        ->  Seq Scan on contract_p30 c_96  (cost=0.00..12.77 rows=343 width=4) (actual rows=344.00 loops=1)
+                                        ->  Seq Scan on contract_p30 c_96  (cost=0.00..12.77 rows=342 width=4) (actual rows=345.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
-                                              Rows Removed by Filter: 41
+                                              Rows Removed by Filter: 40
                                               Buffers: shared hit=7
                                         ->  Seq Scan on contract_p31 c_97  (cost=0.00..0.00 rows=1 width=4) (actual rows=0.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
                                         ->  Seq Scan on contract_default c_98  (cost=0.00..0.00 rows=1 width=4) (actual rows=0.00 loops=1)
                                               Filter: ((connected_on <= '2026-09-30'::date) AND ((closed_on IS NULL) OR (closed_on > '2026-09-30'::date)))
-                            ->  Hash  (cost=36622.23..36622.23 rows=9 width=100) (actual rows=31.00 loops=1)
+                            ->  Hash  (cost=36621.23..36621.23 rows=9 width=100) (actual rows=31.00 loops=1)
                                   Buckets: 1024  Batches: 1  Memory Usage: 11kB
-                                  Buffers: shared hit=5524
-                                  ->  Merge Left Join  (cost=36590.98..36622.23 rows=9 width=100) (actual rows=31.00 loops=1)
+                                  Buffers: shared hit=5523
+                                  ->  Merge Left Join  (cost=36589.98..36621.23 rows=9 width=100) (actual rows=31.00 loops=1)
                                         Merge Cond: (p.id = i_1.provider_id)
-                                        Buffers: shared hit=5524
+                                        Buffers: shared hit=5523
                                         ->  Sort  (cost=4.93..4.96 rows=9 width=36) (actual rows=31.00 loops=1)
                                               Sort Key: p.id
                                               Sort Method: quicksort  Memory: 26kB
@@ -245,19 +245,19 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                                                 Buffers: shared hit=1
                                                                 ->  Seq Scan on city c_99  (cost=0.00..1.12 rows=12 width=4) (actual rows=12.00 loops=1)
                                                                       Buffers: shared hit=1
-                                        ->  GroupAggregate  (cost=36586.05..36614.66 rows=200 width=68) (actual rows=30.00 loops=1)
+                                        ->  GroupAggregate  (cost=36585.05..36613.66 rows=200 width=68) (actual rows=30.00 loops=1)
                                               Group Key: i_1.provider_id
-                                              Buffers: shared hit=5474
-                                              ->  Sort  (cost=36586.05..36592.45 rows=2561 width=68) (actual rows=222396.00 loops=1)
+                                              Buffers: shared hit=5473
+                                              ->  Sort  (cost=36585.05..36591.45 rows=2561 width=68) (actual rows=221939.00 loops=1)
                                                     Sort Key: i_1.provider_id
-                                                    Sort Method: quicksort  Memory: 14475kB
-                                                    Buffers: shared hit=5474
-                                                    ->  Subquery Scan on i_1  (cost=324.26..36441.06 rows=2561 width=68) (actual rows=222396.00 loops=1)
+                                                    Sort Method: quicksort  Memory: 14457kB
+                                                    Buffers: shared hit=5473
+                                                    ->  Subquery Scan on i_1  (cost=324.26..36440.06 rows=2561 width=68) (actual rows=221939.00 loops=1)
                                                           Filter: ((i_1.at >= '2026-01-01'::date) AND (i_1.at < '2026-10-01'::date))
-                                                          Rows Removed by Filter: 289631
-                                                          Buffers: shared hit=5474
-                                                          ->  Append  (cost=324.26..28758.51 rows=512170 width=114) (actual rows=512027.00 loops=1)
-                                                                Buffers: shared hit=5474
+                                                          Rows Removed by Filter: 290088
+                                                          Buffers: shared hit=5473
+                                                          ->  Append  (cost=324.26..28757.51 rows=512170 width=114) (actual rows=512027.00 loops=1)
+                                                                Buffers: shared hit=5473
                                                                 ->  Subquery Scan on "*SELECT* 1_2"  (cost=324.26..1083.92 rows=12004 width=86) (actual rows=12002.00 loops=1)
                                                                       Buffers: shared hit=400
                                                                       ->  Hash Join  (cost=324.26..933.87 rows=12004 width=58) (actual rows=12002.00 loops=1)
@@ -367,40 +367,40 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                                                                   Buffers: shared hit=144
                                                                                   ->  Seq Scan on subscriber s_1  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
                                                                                         Buffers: shared hit=144
-                                                                ->  Subquery Scan on "*SELECT* 2_1"  (cost=1053.91..25113.74 rows=500166 width=88) (actual rows=500025.00 loops=1)
-                                                                      Buffers: shared hit=5074
-                                                                      ->  Hash Join  (cost=1053.91..20112.08 rows=500166 width=62) (actual rows=500025.00 loops=1)
+                                                                ->  Subquery Scan on "*SELECT* 2_1"  (cost=1053.91..25112.74 rows=500166 width=88) (actual rows=500025.00 loops=1)
+                                                                      Buffers: shared hit=5073
+                                                                      ->  Hash Join  (cost=1053.91..20111.08 rows=500166 width=62) (actual rows=500025.00 loops=1)
                                                                             Hash Cond: (se_18.contract_id = c_133.id)
-                                                                            Buffers: shared hit=5074
+                                                                            Buffers: shared hit=5073
                                                                             InitPlan 3
                                                                               ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
                                                                                     Buffers: shared hit=32
-                                                                            ->  Append  (cost=0.00..12181.21 rows=500083 width=24) (actual rows=500025.00 loops=1)
-                                                                                  Buffers: shared hit=4680
-                                                                                  ->  Seq Scan on session_2024_q1 se_19  (cost=0.00..80.31 rows=4131 width=24) (actual rows=4131.00 loops=1)
+                                                                            ->  Append  (cost=0.00..12180.21 rows=500083 width=24) (actual rows=500025.00 loops=1)
+                                                                                  Buffers: shared hit=4679
+                                                                                  ->  Seq Scan on session_2024_q1 se_19  (cost=0.00..80.49 rows=4149 width=24) (actual rows=4149.00 loops=1)
                                                                                         Buffers: shared hit=39
-                                                                                  ->  Seq Scan on session_2024_q2 se_20  (cost=0.00..231.05 rows=11905 width=24) (actual rows=11905.00 loops=1)
-                                                                                        Buffers: shared hit=112
-                                                                                  ->  Seq Scan on session_2024_q3 se_21  (cost=0.00..386.92 rows=19992 width=24) (actual rows=19992.00 loops=1)
+                                                                                  ->  Seq Scan on session_2024_q2 se_20  (cost=0.00..229.58 rows=11858 width=24) (actual rows=11858.00 loops=1)
+                                                                                        Buffers: shared hit=111
+                                                                                  ->  Seq Scan on session_2024_q3 se_21  (cost=0.00..386.76 rows=19976 width=24) (actual rows=19976.00 loops=1)
                                                                                         Buffers: shared hit=187
-                                                                                  ->  Seq Scan on session_2024_q4 se_22  (cost=0.00..549.98 rows=28398 width=24) (actual rows=28398.00 loops=1)
-                                                                                        Buffers: shared hit=266
-                                                                                  ->  Seq Scan on session_2025_q1 se_23  (cost=0.00..684.87 rows=35387 width=24) (actual rows=35387.00 loops=1)
-                                                                                        Buffers: shared hit=331
-                                                                                  ->  Seq Scan on session_2025_q2 se_24  (cost=0.00..837.53 rows=43253 width=24) (actual rows=43253.00 loops=1)
-                                                                                        Buffers: shared hit=405
-                                                                                  ->  Seq Scan on session_2025_q3 se_25  (cost=0.00..1005.49 rows=51949 width=24) (actual rows=51949.00 loops=1)
+                                                                                  ->  Seq Scan on session_2024_q4 se_22  (cost=0.00..548.02 rows=28302 width=24) (actual rows=28302.00 loops=1)
+                                                                                        Buffers: shared hit=265
+                                                                                  ->  Seq Scan on session_2025_q1 se_23  (cost=0.00..682.74 rows=35274 width=24) (actual rows=35274.00 loops=1)
+                                                                                        Buffers: shared hit=330
+                                                                                  ->  Seq Scan on session_2025_q2 se_24  (cost=0.00..836.18 rows=43218 width=24) (actual rows=43218.00 loops=1)
+                                                                                        Buffers: shared hit=404
+                                                                                  ->  Seq Scan on session_2025_q3 se_25  (cost=0.00..1005.09 rows=51909 width=24) (actual rows=51909.00 loops=1)
                                                                                         Buffers: shared hit=486
-                                                                                  ->  Seq Scan on session_2025_q4 se_26  (cost=0.00..1160.30 rows=59930 width=24) (actual rows=59930.00 loops=1)
-                                                                                        Buffers: shared hit=561
-                                                                                  ->  Seq Scan on session_2026_q1 se_27  (cost=0.00..1274.69 rows=65869 width=24) (actual rows=65869.00 loops=1)
+                                                                                  ->  Seq Scan on session_2025_q4 se_26  (cost=0.00..1158.28 rows=59828 width=24) (actual rows=59828.00 loops=1)
+                                                                                        Buffers: shared hit=560
+                                                                                  ->  Seq Scan on session_2026_q1 se_27  (cost=0.00..1274.44 rows=65844 width=24) (actual rows=65844.00 loops=1)
                                                                                         Buffers: shared hit=616
-                                                                                  ->  Seq Scan on session_2026_q2 se_28  (cost=0.00..1411.02 rows=72902 width=24) (actual rows=72902.00 loops=1)
-                                                                                        Buffers: shared hit=682
-                                                                                  ->  Seq Scan on session_2026_q3 se_29  (cost=0.00..1556.64 rows=80464 width=24) (actual rows=80464.00 loops=1)
-                                                                                        Buffers: shared hit=752
-                                                                                  ->  Seq Scan on session_2026_q4 se_30  (cost=0.00..500.45 rows=25845 width=24) (actual rows=25845.00 loops=1)
-                                                                                        Buffers: shared hit=242
+                                                                                  ->  Seq Scan on session_2026_q2 se_28  (cost=0.00..1405.52 rows=72652 width=24) (actual rows=72652.00 loops=1)
+                                                                                        Buffers: shared hit=679
+                                                                                  ->  Seq Scan on session_2026_q3 se_29  (cost=0.00..1553.81 rows=80281 width=24) (actual rows=80281.00 loops=1)
+                                                                                        Buffers: shared hit=751
+                                                                                  ->  Seq Scan on session_2026_q4 se_30  (cost=0.00..517.34 rows=26734 width=24) (actual rows=26734.00 loops=1)
+                                                                                        Buffers: shared hit=250
                                                                                   ->  Seq Scan on session_2027_q1 se_31  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
                                                                                   ->  Seq Scan on session_2027_q2 se_32  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
                                                                                   ->  Seq Scan on session_2027_q3 se_33  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
@@ -519,28 +519,28 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
           Hash Key: x_1.grp
           Group Key: ()
           Batches: 1  Memory Usage: 32kB
-          Buffers: shared hit=5827
+          Buffers: shared hit=5826
           ->  CTE Scan on x x_1  (cost=0.00..0.18 rows=9 width=140) (actual rows=31.00 loops=1)
                 Storage: Memory  Maximum Storage: 20kB
-                Buffers: shared hit=5745
-  ->  Append  (cost=0.00..36832.49 rows=125 width=185) (actual rows=51.00 loops=1)
-        Buffers: shared hit=11334
+                Buffers: shared hit=5744
+  ->  Append  (cost=0.00..36831.49 rows=125 width=185) (actual rows=51.00 loops=1)
+        Buffers: shared hit=11332
         ->  CTE Scan on t  (cost=0.00..0.20 rows=10 width=185) (actual rows=6.00 loops=1)
               Storage: Memory  Maximum Storage: 17kB
-              Buffers: shared hit=5827
-        ->  GroupAggregate  (cost=3972.12..36831.66 rows=115 width=185) (actual rows=45.00 loops=1)
+              Buffers: shared hit=5826
+        ->  GroupAggregate  (cost=3972.02..36830.66 rows=115 width=185) (actual rows=45.00 loops=1)
               Group Key: x.grp, t_1.provider_group, t_1.providers, ((date_trunc('month'::text, i.at))::date)
-              Buffers: shared hit=5507
-              ->  Incremental Sort  (cost=3972.12..36798.31 rows=115 width=120) (actual rows=222396.00 loops=1)
+              Buffers: shared hit=5506
+              ->  Incremental Sort  (cost=3972.02..36797.31 rows=115 width=120) (actual rows=221939.00 loops=1)
                     Sort Key: x.grp, t_1.provider_group, t_1.providers, ((date_trunc('month'::text, i.at))::date)
                     Presorted Key: x.grp
                     Full-sort Groups: 5  Sort Method: quicksort  Average Memory: 30kB  Peak Memory: 30kB
-                    Pre-sorted Groups: 5  Sort Method: quicksort  Average Memory: 6021kB  Peak Memory: 25402kB
-                    Buffers: shared hit=5474
-                    ->  Nested Loop  (cost=324.95..36794.65 rows=115 width=120) (actual rows=222396.00 loops=1)
+                    Pre-sorted Groups: 5  Sort Method: quicksort  Average Memory: 5960kB  Peak Memory: 25345kB
+                    Buffers: shared hit=5473
+                    ->  Nested Loop  (cost=324.95..36793.65 rows=115 width=120) (actual rows=221939.00 loops=1)
                           Join Filter: (x.id = i.provider_id)
-                          Rows Removed by Join Filter: 6671880
-                          Buffers: shared hit=5468
+                          Rows Removed by Join Filter: 6658170
+                          Buffers: shared hit=5467
                           ->  Merge Join  (cost=0.69..0.87 rows=9 width=48) (actual rows=31.00 loops=1)
                                 Merge Cond: (x.grp = t_1.ord)
                                 ->  Sort  (cost=0.32..0.35 rows=9 width=8) (actual rows=31.00 loops=1)
@@ -553,15 +553,15 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                       Sort Method: quicksort  Memory: 25kB
                                       ->  CTE Scan on t t_1  (cost=0.00..0.20 rows=10 width=44) (actual rows=6.00 loops=1)
                                             Storage: Memory  Maximum Storage: 17kB
-                          ->  Materialize  (cost=324.26..36453.87 rows=2561 width=76) (actual rows=222396.00 loops=31)
-                                Storage: Memory  Maximum Storage: 13854kB
-                                Buffers: shared hit=5468
-                                ->  Subquery Scan on i  (cost=324.26..36441.06 rows=2561 width=76) (actual rows=222396.00 loops=1)
+                          ->  Materialize  (cost=324.26..36452.87 rows=2561 width=76) (actual rows=221939.00 loops=31)
+                                Storage: Memory  Maximum Storage: 13829kB
+                                Buffers: shared hit=5467
+                                ->  Subquery Scan on i  (cost=324.26..36440.06 rows=2561 width=76) (actual rows=221939.00 loops=1)
                                       Filter: ((i.at >= '2026-01-01'::date) AND (i.at < '2026-10-01'::date))
-                                      Rows Removed by Filter: 289631
-                                      Buffers: shared hit=5468
-                                      ->  Append  (cost=324.26..28758.51 rows=512170 width=114) (actual rows=512027.00 loops=1)
-                                            Buffers: shared hit=5468
+                                      Rows Removed by Filter: 290088
+                                      Buffers: shared hit=5467
+                                      ->  Append  (cost=324.26..28757.51 rows=512170 width=114) (actual rows=512027.00 loops=1)
+                                            Buffers: shared hit=5467
                                             ->  Subquery Scan on "*SELECT* 1_1"  (cost=324.26..1083.92 rows=12004 width=86) (actual rows=12002.00 loops=1)
                                                   Buffers: shared hit=394
                                                   ->  Hash Join  (cost=324.26..933.87 rows=12004 width=58) (actual rows=12002.00 loops=1)
@@ -671,40 +671,40 @@ Sort  (cost=73967.80..73968.11 rows=125 width=185) (actual rows=51.00 loops=1)
                                                               Buffers: shared hit=144
                                                               ->  Seq Scan on subscriber s  (cost=0.00..224.00 rows=8000 width=6) (actual rows=8000.00 loops=1)
                                                                     Buffers: shared hit=144
-                                            ->  Subquery Scan on "*SELECT* 2"  (cost=1053.91..25113.74 rows=500166 width=88) (actual rows=500025.00 loops=1)
-                                                  Buffers: shared hit=5074
-                                                  ->  Hash Join  (cost=1053.91..20112.08 rows=500166 width=62) (actual rows=500025.00 loops=1)
+                                            ->  Subquery Scan on "*SELECT* 2"  (cost=1053.91..25112.74 rows=500166 width=88) (actual rows=500025.00 loops=1)
+                                                  Buffers: shared hit=5073
+                                                  ->  Hash Join  (cost=1053.91..20111.08 rows=500166 width=62) (actual rows=500025.00 loops=1)
                                                         Hash Cond: (se.contract_id = c_33.id)
-                                                        Buffers: shared hit=5074
+                                                        Buffers: shared hit=5073
                                                         InitPlan 7
                                                           ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
                                                                 Buffers: shared hit=32
-                                                        ->  Append  (cost=0.00..12181.21 rows=500083 width=24) (actual rows=500025.00 loops=1)
-                                                              Buffers: shared hit=4680
-                                                              ->  Seq Scan on session_2024_q1 se_1  (cost=0.00..80.31 rows=4131 width=24) (actual rows=4131.00 loops=1)
+                                                        ->  Append  (cost=0.00..12180.21 rows=500083 width=24) (actual rows=500025.00 loops=1)
+                                                              Buffers: shared hit=4679
+                                                              ->  Seq Scan on session_2024_q1 se_1  (cost=0.00..80.49 rows=4149 width=24) (actual rows=4149.00 loops=1)
                                                                     Buffers: shared hit=39
-                                                              ->  Seq Scan on session_2024_q2 se_2  (cost=0.00..231.05 rows=11905 width=24) (actual rows=11905.00 loops=1)
-                                                                    Buffers: shared hit=112
-                                                              ->  Seq Scan on session_2024_q3 se_3  (cost=0.00..386.92 rows=19992 width=24) (actual rows=19992.00 loops=1)
+                                                              ->  Seq Scan on session_2024_q2 se_2  (cost=0.00..229.58 rows=11858 width=24) (actual rows=11858.00 loops=1)
+                                                                    Buffers: shared hit=111
+                                                              ->  Seq Scan on session_2024_q3 se_3  (cost=0.00..386.76 rows=19976 width=24) (actual rows=19976.00 loops=1)
                                                                     Buffers: shared hit=187
-                                                              ->  Seq Scan on session_2024_q4 se_4  (cost=0.00..549.98 rows=28398 width=24) (actual rows=28398.00 loops=1)
-                                                                    Buffers: shared hit=266
-                                                              ->  Seq Scan on session_2025_q1 se_5  (cost=0.00..684.87 rows=35387 width=24) (actual rows=35387.00 loops=1)
-                                                                    Buffers: shared hit=331
-                                                              ->  Seq Scan on session_2025_q2 se_6  (cost=0.00..837.53 rows=43253 width=24) (actual rows=43253.00 loops=1)
-                                                                    Buffers: shared hit=405
-                                                              ->  Seq Scan on session_2025_q3 se_7  (cost=0.00..1005.49 rows=51949 width=24) (actual rows=51949.00 loops=1)
+                                                              ->  Seq Scan on session_2024_q4 se_4  (cost=0.00..548.02 rows=28302 width=24) (actual rows=28302.00 loops=1)
+                                                                    Buffers: shared hit=265
+                                                              ->  Seq Scan on session_2025_q1 se_5  (cost=0.00..682.74 rows=35274 width=24) (actual rows=35274.00 loops=1)
+                                                                    Buffers: shared hit=330
+                                                              ->  Seq Scan on session_2025_q2 se_6  (cost=0.00..836.18 rows=43218 width=24) (actual rows=43218.00 loops=1)
+                                                                    Buffers: shared hit=404
+                                                              ->  Seq Scan on session_2025_q3 se_7  (cost=0.00..1005.09 rows=51909 width=24) (actual rows=51909.00 loops=1)
                                                                     Buffers: shared hit=486
-                                                              ->  Seq Scan on session_2025_q4 se_8  (cost=0.00..1160.30 rows=59930 width=24) (actual rows=59930.00 loops=1)
-                                                                    Buffers: shared hit=561
-                                                              ->  Seq Scan on session_2026_q1 se_9  (cost=0.00..1274.69 rows=65869 width=24) (actual rows=65869.00 loops=1)
+                                                              ->  Seq Scan on session_2025_q4 se_8  (cost=0.00..1158.28 rows=59828 width=24) (actual rows=59828.00 loops=1)
+                                                                    Buffers: shared hit=560
+                                                              ->  Seq Scan on session_2026_q1 se_9  (cost=0.00..1274.44 rows=65844 width=24) (actual rows=65844.00 loops=1)
                                                                     Buffers: shared hit=616
-                                                              ->  Seq Scan on session_2026_q2 se_10  (cost=0.00..1411.02 rows=72902 width=24) (actual rows=72902.00 loops=1)
-                                                                    Buffers: shared hit=682
-                                                              ->  Seq Scan on session_2026_q3 se_11  (cost=0.00..1556.64 rows=80464 width=24) (actual rows=80464.00 loops=1)
-                                                                    Buffers: shared hit=752
-                                                              ->  Seq Scan on session_2026_q4 se_12  (cost=0.00..500.45 rows=25845 width=24) (actual rows=25845.00 loops=1)
-                                                                    Buffers: shared hit=242
+                                                              ->  Seq Scan on session_2026_q2 se_10  (cost=0.00..1405.52 rows=72652 width=24) (actual rows=72652.00 loops=1)
+                                                                    Buffers: shared hit=679
+                                                              ->  Seq Scan on session_2026_q3 se_11  (cost=0.00..1553.81 rows=80281 width=24) (actual rows=80281.00 loops=1)
+                                                                    Buffers: shared hit=751
+                                                              ->  Seq Scan on session_2026_q4 se_12  (cost=0.00..517.34 rows=26734 width=24) (actual rows=26734.00 loops=1)
+                                                                    Buffers: shared hit=250
                                                               ->  Seq Scan on session_2027_q1 se_13  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
                                                               ->  Seq Scan on session_2027_q2 se_14  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)
                                                               ->  Seq Scan on session_2027_q3 se_15  (cost=0.00..0.00 rows=1 width=76) (actual rows=0.00 loops=1)

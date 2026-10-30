@@ -12,7 +12,7 @@
    psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f db/create_db.sql
 2. Создайте объекты и данные (повторный запуск пересоздаёт схемы проекта вместе с данными; группы и учётные записи пользователей сохраняются):
    psql -U postgres -d superbd -v ON_ERROR_STOP=1 -f db/build.sql
-3. Проверьте базу автоматическими тестами (в конце выводится «Тесты: пройдено 117 из 117»):
+3. Проверьте базу автоматическими тестами (в конце выводится «Тесты: пройдено 140 из 140»):
    psql -U postgres -d superbd -v ON_ERROR_STOP=1 -f db/tests/run_all.sql
 
 На Windows шаги 2 и 3 выполняет сценарий db\build_and_test.cmd: полный вывод записывается в db\build_and_test.log, в окне выводятся результаты тестов и итог (рисунок [@fig:tests-run]).

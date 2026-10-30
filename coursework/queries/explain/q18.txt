@@ -8,19 +8,19 @@ SELECT name, subscriber_type, contracts, sessions, volume_mb, cost, total_count,
 -- Результат (первые строки)
     name     | subscriber_type | contracts | sessions | volume_mb |  cost   | total_count | total_sessions | total_volume_mb | total_cost 
 -------------+-----------------+-----------+----------+-----------+---------+-------------+----------------+-----------------+------------
- Школа № 126 | Школа           |         1 |        5 |  5133.549 |  696.40 |          10 |            215 |      105184.455 |    7685.04
- Школа № 36  | Школа           |         1 |       22 | 10494.273 |  398.76 |          10 |            215 |      105184.455 |    7685.04
- Школа № 43  | Школа           |         1 |       24 | 12777.079 |  466.52 |          10 |            215 |      105184.455 |    7685.04
- Школа № 44  | Школа           |         1 |       27 |  9662.867 |  468.85 |          10 |            215 |      105184.455 |    7685.04
- Школа № 61  | Школа           |         2 |       41 | 16555.255 | 1341.14 |          10 |            215 |      105184.455 |    7685.04
- Школа № 62  | Школа           |         1 |       21 |  9938.142 |  844.69 |          10 |            215 |      105184.455 |    7685.04
- Школа № 76  | Школа           |         2 |       29 | 13463.480 |  667.81 |          10 |            215 |      105184.455 |    7685.04
- Школа № 85  | Школа           |         1 |       22 | 12349.495 | 1703.03 |          10 |            215 |      105184.455 |    7685.04
- Школа № 94  | Школа           |         1 |       22 | 13385.093 |  995.38 |          10 |            215 |      105184.455 |    7685.04
- Школа № 97  | Школа           |         1 |        2 |  1425.222 |  102.46 |          10 |            215 |      105184.455 |    7685.04
+ Школа № 126 | Школа           |         1 |        4 |  3679.956 |  486.55 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 36  | Школа           |         1 |       20 |  6555.294 |  286.94 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 43  | Школа           |         1 |       25 | 10602.203 |  475.35 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 44  | Школа           |         1 |       23 | 11003.514 |  300.73 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 61  | Школа           |         2 |       34 | 23399.477 | 1546.82 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 62  | Школа           |         1 |       22 |  8081.538 |  437.19 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 76  | Школа           |         2 |       32 |  9961.446 |  400.90 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 85  | Школа           |         1 |       23 |  8767.980 | 1035.29 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 94  | Школа           |         1 |       23 | 13933.066 | 1071.39 |          10 |            207 |       96877.504 |    6081.97
+ Школа № 97  | Школа           |         1 |        1 |   893.030 |   40.81 |          10 |            207 |       96877.504 |    6081.97
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 10.094 ms  plan:
+duration: 8.800 ms  plan:
 Query Text: SELECT s.id, s.name::text, st.name::text,
            count(DISTINCT c.id), count(*), sum(se.volume_mb), sum(se.cost),
            count(*) OVER (), sum(count(*)) OVER (), sum(sum(se.volume_mb)) OVER (), sum(sum(se.cost)) OVER ()
@@ -34,35 +34,35 @@ Query Text: SELECT s.id, s.name::text, st.name::text,
     GROUP BY s.id, st.id
     ORDER BY s.name, s.id
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
-Limit  (cost=1324.18..1324.21 rows=11 width=299) (actual rows=10.00 loops=1)
-  Buffers: shared hit=446
-  ->  Sort  (cost=1324.18..1324.21 rows=11 width=299) (actual rows=10.00 loops=1)
+Limit  (cost=1321.53..1321.55 rows=11 width=299) (actual rows=10.00 loops=1)
+  Buffers: shared hit=437
+  ->  Sort  (cost=1321.53..1321.55 rows=11 width=299) (actual rows=10.00 loops=1)
         Sort Key: ((s.name)::text), s.id
         Sort Method: quicksort  Memory: 27kB
-        Buffers: shared hit=446
-        ->  WindowAgg  (cost=1323.94..1323.99 rows=11 width=299) (actual rows=10.00 loops=1)
+        Buffers: shared hit=437
+        ->  WindowAgg  (cost=1321.28..1321.34 rows=11 width=299) (actual rows=10.00 loops=1)
               Window: w1 AS ()
               Storage: Memory  Maximum Storage: 17kB
-              Buffers: shared hit=443
-              ->  GroupAggregate  (cost=1323.41..1323.77 rows=11 width=158) (actual rows=10.00 loops=1)
+              Buffers: shared hit=434
+              ->  GroupAggregate  (cost=1320.76..1321.12 rows=11 width=158) (actual rows=10.00 loops=1)
                     Group Key: s.id, st.id
-                    Buffers: shared hit=443
-                    ->  Sort  (cost=1323.41..1323.44 rows=11 width=94) (actual rows=215.00 loops=1)
+                    Buffers: shared hit=434
+                    ->  Sort  (cost=1320.76..1320.79 rows=11 width=94) (actual rows=207.00 loops=1)
                           Sort Key: s.id, st.id, c.id
-                          Sort Method: quicksort  Memory: 40kB
-                          Buffers: shared hit=443
-                          ->  Nested Loop  (cost=17.13..1323.22 rows=11 width=94) (actual rows=215.00 loops=1)
+                          Sort Method: quicksort  Memory: 39kB
+                          Buffers: shared hit=434
+                          ->  Nested Loop  (cost=17.13..1320.57 rows=11 width=94) (actual rows=207.00 loops=1)
                                 Join Filter: (s.subscriber_type_id = st.id)
-                                Rows Removed by Join Filter: 2150
-                                Buffers: shared hit=440
+                                Rows Removed by Join Filter: 2070
+                                Buffers: shared hit=431
                                 ->  Index Scan using pk_subscriber_type on subscriber_type st  (cost=0.14..12.30 rows=11 width=29) (actual rows=11.00 loops=1)
                                       Index Searches: 1
                                       Buffers: shared hit=2
-                                ->  Materialize  (cost=17.00..1309.14 rows=11 width=67) (actual rows=215.00 loops=11)
+                                ->  Materialize  (cost=17.00..1306.48 rows=11 width=67) (actual rows=207.00 loops=11)
                                       Storage: Memory  Maximum Storage: 31kB
-                                      Buffers: shared hit=438
-                                      ->  Nested Loop  (cost=17.00..1309.08 rows=11 width=67) (actual rows=215.00 loops=1)
-                                            Buffers: shared hit=438
+                                      Buffers: shared hit=429
+                                      ->  Nested Loop  (cost=17.00..1306.43 rows=11 width=67) (actual rows=207.00 loops=1)
+                                            Buffers: shared hit=429
                                             ->  Hash Join  (cost=16.71..282.44 rows=16 width=59) (actual rows=12.00 loops=1)
                                                   Hash Cond: (s.id = c.subscriber_id)
                                                   Buffers: shared hit=151
@@ -76,21 +76,21 @@ Limit  (cost=1324.18..1324.21 rows=11 width=299) (actual rows=10.00 loops=1)
                                                         ->  Seq Scan on contract_p1 c  (cost=0.00..11.60 rows=409 width=12) (actual rows=409.00 loops=1)
                                                               Filter: (provider_id = ANY ('{1}'::integer[]))
                                                               Buffers: shared hit=7
-                                            ->  Append  (cost=0.28..64.00 rows=17 width=20) (actual rows=17.92 loops=12)
-                                                  Buffers: shared hit=287
+                                            ->  Append  (cost=0.28..63.83 rows=17 width=20) (actual rows=17.25 loops=12)
+                                                  Buffers: shared hit=278
                                                   Subplans Removed: 14
-                                                  ->  Index Scan using session_2026_q1_contract_id_started_at_idx on session_2026_q1 se_1  (cost=0.29..8.94 rows=1 width=20) (actual rows=4.25 loops=12)
+                                                  ->  Index Scan using session_2026_q1_contract_id_started_at_idx on session_2026_q1 se_1  (cost=0.29..8.94 rows=1 width=20) (actual rows=4.17 loops=12)
                                                         Index Cond: ((contract_id = c.id) AND (started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date))
                                                         Filter: (c.provider_id = provider_id)
                                                         Index Searches: 12
-                                                        Buffers: shared hit=75
-                                                  ->  Index Scan using session_2026_q2_contract_id_started_at_idx on session_2026_q2 se_2  (cost=0.29..9.66 rows=1 width=20) (actual rows=6.75 loops=12)
+                                                        Buffers: shared hit=74
+                                                  ->  Index Scan using session_2026_q2_contract_id_started_at_idx on session_2026_q2 se_2  (cost=0.29..9.63 rows=1 width=20) (actual rows=7.33 loops=12)
                                                         Index Cond: ((contract_id = c.id) AND (started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date))
                                                         Filter: (c.provider_id = provider_id)
                                                         Index Searches: 12
-                                                        Buffers: shared hit=105
-                                                  ->  Index Scan using session_2026_q3_contract_id_started_at_idx on session_2026_q3 se_3  (cost=0.29..10.43 rows=1 width=20) (actual rows=6.92 loops=12)
+                                                        Buffers: shared hit=111
+                                                  ->  Index Scan using session_2026_q3_contract_id_started_at_idx on session_2026_q3 se_3  (cost=0.29..10.41 rows=1 width=20) (actual rows=5.75 loops=12)
                                                         Index Cond: ((contract_id = c.id) AND (started_at >= '2026-01-01'::date) AND (started_at < '2026-10-01'::date))
                                                         Filter: (c.provider_id = provider_id)
                                                         Index Searches: 12
-                                                        Buffers: shared hit=107
+                                                        Buffers: shared hit=93

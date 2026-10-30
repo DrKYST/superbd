@@ -10,7 +10,7 @@
   * код в основной части — рисунок: в рамке только код (целиком на одной странице), под рамкой — «Рисунок N.k – …»;
   * весь документ ≤ TOTAL_LIMIT страниц (курсовой целиком около 100 с. с учётом недописанного), бюджет — BUDGET;
   * в тексте нет ссылок на ТЗ, источников ≤ 4, ссылка — на один источник [N];
-  * код в приложениях — «Листинг Б.k – …» над листингом, три колонки, 11 пт, ключевые объекты в сокращении;
+  * код в приложениях — только текст кода (без подписей), сплошь в три колонки, 11 пт, ключевые объекты в сокращении;
   * «Таблица N.k – …» над таблицей; ссылка на каждый объект в тексте до него; нумерация внутри раздела,
     в приложениях — с буквой.
 Код в рисунки и листинги вырезается из реальных файлов проекта (db/, client/) — вручную не переписывается.
@@ -22,10 +22,11 @@
   обычные абзацы (строки подряд склеиваются), «- пункт» — список с тире, «1. пункт» — нумерованный «1)»
   Таблица: Название {#tab:key}     перед pipe-таблицей; {#tab:key widths=20,30,50} — ширины колонок в процентах
   ![Название](путь.png){#fig:key width=16}            рисунок (нет файла — видимая заглушка);
-      crop=form|main|x0,y0,x1,y1 — обрезка снимка клиента, trim — пустой низ, squeeze — пустые полосы внутри
+      crop=form|main|x0,y0,x1,y1 — обрезка снимка клиента, trim — пустой низ, squeeze — пустые полосы внутри;
+      ph=<см> — высота места под ещё не снятый снимок (заглушка занимает столько же, сколько снимок)
   ![А](a.png){#fig:a} ![Б](b.png){#fig:b}             два снимка в одной строке — рядом, у каждого своя подпись
   !code[Название](путь#селектор){#fig:key}            код-рисунок основной части
-  !listing[Название](путь#селектор){#lst:key}         листинг приложения (три колонки, сокращение)
+  !listing[Название](путь#селектор){#lst:key}         код приложения: без подписи, сплошь в три колонки (название — для сборщика)
   !stub[текст || подробности]      видимая заглушка «[ЗАГЛУШКА: текст]» + запись в coursework/out/pz_todo.md
   !tz  !toc  !pagebreak            ТЗ (coursework/tz/tz.docx), содержание, разрыв страницы
   [@fig:key] [@tab:key] [@lst:key] номер объекта; {{PAGES}} {{FIGURES}} {{TABLES}} {{SOURCES}} {{APPENDICES}} — для реферата
@@ -57,11 +58,14 @@ FONT = "Times New Roman"
 TEXT_WIDTH = 9638          # dxa: A4, поля шаблона 3 см и 1 см
 TEXT_HEIGHT_PT = 714       # высота текста страницы (поля 2 и 2,5 см)
 DASH = "–"
-TOTAL_LIMIT = 90           # страниц всего сейчас; весь курсовой ≤ ~100 с. вместе с недописанными частями
+TOTAL_LIMIT = 92           # страниц всего сейчас; весь курсовой ≤ ~100 с. вместе с недописанными частями
 # бюджет по разделам на 28.10.2026 (сумма 90); недописанное (4.3, 4.5, 4.6, 4.8, формы раздела 5, тесты) —
 # из резерва ~10 с., при дописывании сокращать другие части, чтобы весь документ оставался около 100 с.
-BUDGET = {"front": 12, "1": 3, "2": 3, "3": 5, "4": 33, "5": 8, "6": 3, "tail": 3,
-          "А": 2, "Б": 6, "В": 5, "Г": 3, "Д": 2, "Е": 2}
+# 30.10: запросы 17–23 и 4.6 (+3 с. в разделе 4, +1 с. в 6) — за счёт листингов приложений сплошь в три колонки (−4 с.)
+# 30.10 вечер: вставлены все снимки (схема данных, pgAdmin 17–23, секции, группы) — раздел 4 +2 с.; заглушки
+# снимков больше нет, резерв — только под ненаписанное (триггеры, RLS, модифицируемое представление, формы ≈ 6–8 с.)
+BUDGET = {"front": 12, "1": 3, "2": 3, "3": 5, "4": 38, "5": 8, "6": 4, "tail": 3,
+          "А": 2, "Б": 4, "В": 3, "Г": 3, "Д": 2, "Е": 2}
 
 
 def read(path):
@@ -116,9 +120,15 @@ def extract(spec, md_dir):
     name = name.split(";")[0]
     if kind in ("", "file"):
         out = lines
-    elif kind == "lines":
-        a, b = (int(x) for x in name.split("-"))
-        out = lines[a - 1:b]
+    elif kind == "lines":                       # lines:10-20 или lines:10-12,30-35 (пропуск — «…»)
+        out = []
+        for k, rng in enumerate(name.split(",")):
+            a, b = (int(x) for x in rng.split("-"))
+            part = lines[a - 1:b]
+            if k:
+                ind = len(part[0]) - len(part[0].lstrip()) if part else 0
+                out.append(" " * ind + "…")
+            out += part
     elif kind in ("view", "func", "table", "stmt"):
         pat = {"view": rf"CREATE (OR REPLACE )?VIEW {re.escape(name)}\b",
                "func": rf"CREATE (OR REPLACE )?FUNCTION {re.escape(name)}\(",
@@ -252,8 +262,11 @@ def api_table():
     order = ["grp_operator", "grp_manager", "grp_chief", "grp_admin", "grp_dba"]
     for name in sorted(objs, key=lambda n: (objs[n]["kind"] != "представление", n)):
         o = objs[name]
+        if re.match(r"^(Запрос \d+|Отчёт «)", o["comment"]):
+            continue                               # запросы описаны в подразделе 4.7 (объём ПЗ)
         c = re.sub(r"\s*\(D\d+\)", "", o["comment"])
-        m = re.match(r"^(Запрос \d+[а-я]?) \(ЛР \d\)\.\s*(.*)$", c) or re.match(r"^(Отчёт «[^»]+») \(ЛР \d\):\s*(.*)$", c)
+        src = r"\((?:ЛР \d|ТЗ курсового проекта)\)"          # источник вида запроса — не для ПЗ
+        m = re.match(rf"^(Запрос \d+[а-я]?) {src}\.\s*(.*)$", c) or re.match(rf"^(Отчёт «[^»]+») {src}:\s*(.*)$", c)
         prefix = (m.group(1) + ". ") if m else ""
         c = m.group(2) if m else c
         short = re.split(r";\s|\s—\s|:\s|\s\(|,\s+у\s", c)[0].strip().rstrip(".")
@@ -262,7 +275,7 @@ def api_table():
         c = prefix + short[:1].upper() + short[1:]
         g = ", ".join(GROUPS[x] for x in order if x in o["groups"])
         rows.append([f"api.{name}", o["kind"], c, g])
-    return ("Представления и функции схемы api", "tab:api-objects", {"widths": "28,18,40,14", "size": "10"}, rows)
+    return ("Представления и функции схемы api, кроме запросов", "tab:api-objects", {"widths": "28,18,40,14", "size": "10"}, rows)
 
 
 def file_list(lang):
@@ -445,6 +458,9 @@ class PZDoc:
             if el.tag != qn("w:sectPr"):
                 body.remove(el)
         self.sect = body.find(qn("w:sectPr"))
+        self.sect_pristine = self.sect.xml       # для разрывов разделов листингов (три колонки)
+        self.lst_open = self.lst_first = False
+        self.lst_sections = 0
         # шрифт по умолчанию и во всех стилях — Times New Roman (в шаблоне по умолчанию — шрифты темы)
         for rpr in d.styles.element.iter(qn("w:rPr")):
             _tnr(rpr)
@@ -733,8 +749,11 @@ class PZDoc:
     def image(self, title, path, key, kv):
         no = self.number("Рисунок", key)
         if not os.path.exists(path):
-            self.para(f"[ВСТАВИТЬ СНИМОК: {os.path.relpath(path, ROOT)}]", indent=False, align="center",
-                      keep_next=True, before=6).runs[0].font.highlight_color = 7
+            ph = self.para(f"[ВСТАВИТЬ СНИМОК: {os.path.relpath(path, ROOT)}]", indent=False, align="center",
+                           keep_next=True, before=6)
+            ph.runs[0].font.highlight_color = 7
+            if "ph" in kv:                       # ph=<см> — место под будущий снимок (честный объём страниц)
+                ph.paragraph_format.space_after = Cm(max(0.0, float(kv["ph"]) - 0.6))
             self.todo.append(f"Нет снимка: {os.path.relpath(path, ROOT)} (рисунок {no})")
         else:
             path, (w, h) = self._picture(path, kv)
@@ -766,6 +785,8 @@ class PZDoc:
             if not os.path.exists(b.path):
                 self.run(p, f"[ВСТАВИТЬ СНИМОК: {os.path.relpath(b.path, ROOT)}]", highlight=True)
                 self.todo.append(f"Нет снимка: {os.path.relpath(b.path, ROOT)} (рисунок {no})")
+                if "ph" in b.kv:
+                    p.paragraph_format.space_after = Cm(max(0.0, float(b.kv["ph"]) - 0.6))
             else:
                 path, (w, h) = self._picture(b.path, b.kv)
                 width = min(float(b.kv.get("width", 8.0)), 8.2, float(b.kv.get("maxh", 21.0)) * w / h)
@@ -837,47 +858,67 @@ class PZDoc:
         self.inline(cp, f"Рисунок {no} {DASH} {title}")
         self.para("", indent=False, line=1.0)
 
-    # ---------------------------------------------------------------- листинг приложения: три колонки, 11 пт
+    # ---------------------------------------------------------------- листинги приложений: сплошной текст в три колонки
+    def section_break(self, cols, continuous):
+        """Конец текущего раздела Word: абзац с w:sectPr (копия раздела документа) — cols колонок.
+
+        continuous — раздел начинается без разрыва страницы (новая страница — у заголовка приложения)."""
+        sp = parse_xml(self.sect_pristine)
+        for e in sp.findall(qn("w:type")):
+            sp.remove(e)
+        if continuous:
+            t = OxmlElement("w:type")
+            t.set(qn("w:val"), "continuous")
+            refs = sp.findall(qn("w:headerReference")) + sp.findall(qn("w:footerReference"))
+            (refs[-1].addnext(t) if refs else sp.insert(0, t))
+        c = sp.find(qn("w:cols"))
+        if c is None:
+            c = OxmlElement("w:cols")
+            sp.find(qn("w:pgMar")).addnext(c)
+        for a in list(c.attrib):
+            del c.attrib[a]
+        c.set(qn("w:space"), "284")
+        if cols > 1:
+            c.set(qn("w:num"), str(cols))
+        p = self.para("", indent=False, line=1.0)
+        p.paragraph_format.space_after = Pt(0)
+        p.paragraph_format.space_before = Pt(0)
+        self.run(p, "", size=1)
+        p._p.get_or_add_pPr().append(sp)
+
+    def listing_open(self):
+        if not self.lst_open:
+            # раздел до кода (заголовок приложения) — одна колонка; первый такой разрыв — как раздел документа
+            self.section_break(1, continuous=self.lst_sections > 0)
+            self.lst_open, self.lst_first = True, True
+
+    def listing_close(self):
+        if self.lst_open:
+            self.section_break(3, continuous=True)
+            self.lst_open = False
+            self.lst_sections += 1
+
     def listing(self, title, spec, key, kv, md_dir):
+        """Листинг приложения: только текст кода (без подписи), Times New Roman 11 пт, сплошь в три колонки."""
         lang = "cpp" if re.search(r"\.(h|cpp|txt)(#|$)", spec) or spec.endswith("CMakeLists.txt") else "sql"
         lines = strip_comments(extract(spec, md_dir), lang)
         if ";full" not in spec:
             lines = abbreviate(lines, lang, limit=int(kv.get("limit", 34)))
         lines = [re.sub(r"^( +)", lambda m: " " * (len(m.group(1)) // 2), s) for s in lines]   # отступ вдвое
         size = float(kv.get("size", 11))
-        col_w = TEXT_WIDTH // 3
-        per = max(10, int((col_w - 216) / 20 / (size * 0.47)))
-        cost = [max(1, -(-len(s) // per)) for s in lines]
-        cap = int((TEXT_HEIGHT_PT - 50) / (size * 1.17))
-        total = sum(cost)
-        target = -(-total // 3)
-        cols, cur, acc = [[], [], []], 0, 0
-        for s, c in zip(lines, cost):
-            if acc + c > target and cur < 2 and acc > 0:
-                cur, acc = cur + 1, 0
-            cols[cur].append(s)
-            acc += c
-        no = self.number("Листинг", key)
-        if max(sum(max(1, -(-len(s) // per)) for s in col) for col in cols) > cap:
-            self.todo.append(f"Листинг {no} выше страницы — сократить")
-        self.caption_above("Листинг", no, title)
-        tbl = self.d.add_table(rows=1, cols=3)
-        self._append(tbl._tbl)
-        self._tblpr(tbl, [col_w, col_w, TEXT_WIDTH - 2 * col_w], center=True)
-        tbl.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
-        for j, col in enumerate(cols):
-            cell = tbl.cell(0, j)
-            for k, s in enumerate(col or [" "]):
-                p = cell.paragraphs[0] if k == 0 else cell.add_paragraph()
-                pf = p.paragraph_format
-                pf.first_line_indent = Cm(0)
-                pf.space_after = Pt(0)
-                pf.line_spacing = 1.0
-                pf.keep_together = True
-                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                self.run(p, s if s.strip() else " ", size=size)
-        self.code_checks.append((f"Листинг {no}", next((s.strip() for s in lines if s.strip()), "")))
-        self.para("", indent=False, line=1.0)
+        self.number("Листинг", key)
+        self.listing_open()
+        if not self.lst_first:
+            lines = [""] + lines                     # фрагменты разделены пустой строкой
+        self.lst_first = False
+        for s in lines:
+            p = self.para("", indent=False, align="left", line=1.0)
+            pf = p.paragraph_format
+            pf.space_after = Pt(0)
+            pf.space_before = Pt(0)
+            pf.keep_together = True
+            self.run(p, s if s.strip() else " ", size=size)
+        self.code_checks.append((f"Листинг {key}", next((s.strip() for s in lines if s.strip()), "")))
 
     # ---------------------------------------------------------------- титульный лист
     def title_page(self):
@@ -936,6 +977,8 @@ class PZDoc:
     def render(self, blocks):
         for b in blocks:
             k = b.kind
+            if k != "listing":
+                self.listing_close()
             if k == "h":
                 self.heading(b.level, b.text)
             elif k == "p":
@@ -964,6 +1007,13 @@ class PZDoc:
                 self.table(*api_table())
             elif k == "filelist":
                 self.table(*file_list(b.lang))
+        self.listing_close()
+        if self.lst_sections and self.sect.find(qn("w:type")) is None:
+            # раздел после последних листингов начинается заголовком приложения с разрывом страницы
+            t = OxmlElement("w:type")
+            t.set(qn("w:val"), "continuous")
+            refs = self.sect.findall(qn("w:headerReference")) + self.sect.findall(qn("w:footerReference"))
+            (refs[-1].addnext(t) if refs else self.sect.insert(0, t))
 
     def number_pass(self, blocks):
         """Номера объектов до вывода — ссылки в тексте стоят раньше самих объектов."""

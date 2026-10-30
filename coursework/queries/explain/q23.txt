@@ -6,31 +6,31 @@
 SELECT name, subscriber_type, volume_mb, avg_mb, above_pct, total_count FROM api.q_subscribers_above_avg('2026-07-01', '2026-09-30');
 
 -- Результат (первые строки)
-              name              |      subscriber_type       | volume_mb |  avg_mb  | above_pct | total_count 
---------------------------------+----------------------------+-----------+----------+-----------+-------------
- Кузнецов Андрей Дмитриевич     | Частное лицо               | 23341.773 | 4963.397 |     370.3 |         111
- Алексеев Евгений Викторович    | Частное лицо               | 22492.439 | 4963.397 |     353.2 |         111
- Коваленко Наталья Ивановна     | Частное лицо               | 17858.818 | 4963.397 |     259.8 |         111
- Борисов Владислав Сергеевич    | Частное лицо               | 15831.176 | 4963.397 |     219.0 |         111
- Волкова Юлия Викторовна        | Частное лицо               | 15358.850 | 4963.397 |     209.4 |         111
- Степанова Марина Олеговна      | Частное лицо               | 15227.362 | 4963.397 |     206.8 |         111
- Козлова Марина Михайловна      | Частное лицо               | 14753.096 | 4963.397 |     197.2 |         111
- Яковлева Юлия Ивановна         | Частное лицо               | 13791.502 | 4963.397 |     177.9 |         111
- Музыкальная академия           | Вуз                        | 13775.535 | 4963.397 |     177.5 |         111
- Григорьева Екатерина Андреевна | Частное лицо               | 13606.699 | 4963.397 |     174.1 |         111
- Михайлова Наталья Дмитриевна   | Частное лицо               | 12511.517 | 4963.397 |     152.1 |         111
- Смирнов Юрий Олегович          | Частное лицо               | 12065.134 | 4963.397 |     143.1 |         111
- Центр занятости № 16           | Государственное учреждение | 11679.478 | 4963.397 |     135.3 |         111
- Попова Оксана Петровна         | Частное лицо               | 11382.339 | 4963.397 |     129.3 |         111
- Кравченко Павел Михайлович     | Частное лицо               | 11371.760 | 4963.397 |     129.1 |         111
- Лебедева Оксана Сергеевна      | Частное лицо               | 11141.829 | 4963.397 |     124.5 |         111
- Коваленко Игорь Викторович     | Частное лицо               | 11110.467 | 4963.397 |     123.8 |         111
- Кравченко Юрий Петрович        | Частное лицо               | 10986.233 | 4963.397 |     121.3 |         111
- Сидорова Юлия Алексеевна       | Частное лицо               | 10965.261 | 4963.397 |     120.9 |         111
- Николаев Олег Сергеевич        | Частное лицо               | 10706.571 | 4963.397 |     115.7 |         111
+                   name                    |      subscriber_type       | volume_mb |  avg_mb  | above_pct | total_count 
+-------------------------------------------+----------------------------+-----------+----------+-----------+-------------
+ Отделение пенсионного фонда № 2           | Государственное учреждение | 19587.693 | 5255.709 |     272.7 |         108
+ Кузнецов Андрей Дмитриевич                | Частное лицо               | 18675.749 | 5255.709 |     255.3 |         108
+ Смирнов Юрий Олегович                     | Частное лицо               | 16556.587 | 5255.709 |     215.0 |         108
+ Горный институт                           | Вуз                        | 16096.323 | 5255.709 |     206.3 |         108
+ Козлова Марина Михайловна                 | Частное лицо               | 15372.895 | 5255.709 |     192.5 |         108
+ Алексеева Виктория Владимировна           | Частное лицо               | 15194.847 | 5255.709 |     189.1 |         108
+ Коваленко Наталья Ивановна                | Частное лицо               | 15194.192 | 5255.709 |     189.1 |         108
+ Кравченко Анна Владимировна               | Частное лицо               | 15053.145 | 5255.709 |     186.4 |         108
+ Попова Оксана Петровна                    | Частное лицо               | 14257.180 | 5255.709 |     171.3 |         108
+ Борисов Владислав Сергеевич               | Частное лицо               | 14236.051 | 5255.709 |     170.9 |         108
+ Центр занятости № 16                      | Государственное учреждение | 14141.021 | 5255.709 |     169.1 |         108
+ Григорьева Екатерина Андреевна            | Частное лицо               | 13728.025 | 5255.709 |     161.2 |         108
+ Музыкальная академия                      | Вуз                        | 13335.992 | 5255.709 |     153.7 |         108
+ Бондаренко Александр Михайлович           | Частное лицо               | 13017.553 | 5255.709 |     147.7 |         108
+ ПАО «Хлебозавод»                          | Предприятие                | 11875.525 | 5255.709 |     126.0 |         108
+ Михайлова Наталья Дмитриевна              | Частное лицо               | 11617.813 | 5255.709 |     121.1 |         108
+ Степанова Марина Олеговна                 | Частное лицо               | 11610.975 | 5255.709 |     120.9 |         108
+ Иванова Оксана Николаевна                 | Частное лицо               | 11579.657 | 5255.709 |     120.3 |         108
+ Общественная организация «Ветераны труда» | Общественная организация   | 11504.866 | 5255.709 |     118.9 |         108
+ Строительная академия                     | Вуз                        | 11412.834 | 5255.709 |     117.2 |         108
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 14.510 ms  plan:
+duration: 12.602 ms  plan:
 Query Text: WITH t AS (            -- итог по абоненту: трафик за период у видимых провайдеров
         SELECT c.subscriber_id, sum(se.volume_mb) AS volume_mb
         FROM core.session se
@@ -48,25 +48,25 @@ Query Text: WITH t AS (            -- итог по абоненту: трафи
     WHERE t.volume_mb > (SELECT avg(t0.volume_mb) FROM t t0)
     ORDER BY t.volume_mb DESC, s.id
     LIMIT least(greatest(p_limit, 1), 200) OFFSET greatest(p_offset, 0)
-Limit  (cost=3137.51..3137.56 rows=20 width=172) (actual rows=20.00 loops=1)
-  Buffers: shared hit=1115
+Limit  (cost=3132.04..3132.09 rows=20 width=172) (actual rows=20.00 loops=1)
+  Buffers: shared hit=1105
   CTE t
-    ->  GroupAggregate  (cost=2898.43..2900.57 rows=107 width=36) (actual rows=274.00 loops=1)
+    ->  GroupAggregate  (cost=2892.85..2895.01 rows=108 width=36) (actual rows=273.00 loops=1)
           Group Key: c.subscriber_id
-          Buffers: shared hit=759
-          ->  Sort  (cost=2898.43..2898.70 rows=107 width=10) (actual rows=2791.00 loops=1)
+          Buffers: shared hit=758
+          ->  Sort  (cost=2892.85..2893.12 rows=108 width=10) (actual rows=2769.00 loops=1)
                 Sort Key: c.subscriber_id
-                Sort Method: quicksort  Memory: 184kB
-                Buffers: shared hit=759
-                ->  Hash Join  (cost=18.02..2894.82 rows=107 width=10) (actual rows=2791.00 loops=1)
+                Sort Method: quicksort  Memory: 183kB
+                Buffers: shared hit=758
+                ->  Hash Join  (cost=18.02..2889.20 rows=108 width=10) (actual rows=2769.00 loops=1)
                       Hash Cond: ((se.contract_id = c.id) AND (se.provider_id = c.provider_id))
-                      Buffers: shared hit=759
-                      ->  Append  (cost=0.28..2454.57 rows=80480 width=14) (actual rows=80464.00 loops=1)
-                            Buffers: shared hit=752
+                      Buffers: shared hit=758
+                      ->  Append  (cost=0.28..2449.91 rows=80297 width=14) (actual rows=80281.00 loops=1)
+                            Buffers: shared hit=751
                             Subplans Removed: 16
-                            ->  Seq Scan on session_2026_q3 se_1  (cost=0.00..1958.96 rows=80464 width=14) (actual rows=80464.00 loops=1)
+                            ->  Seq Scan on session_2026_q3 se_1  (cost=0.00..1955.21 rows=80281 width=14) (actual rows=80281.00 loops=1)
                                   Filter: ((started_at >= '2026-07-01'::date) AND (started_at < '2026-10-01'::date))
-                                  Buffers: shared hit=752
+                                  Buffers: shared hit=751
                       ->  Hash  (cost=11.60..11.60 rows=409 width=12) (actual rows=409.00 loops=1)
                             Buckets: 1024  Batches: 1  Memory Usage: 26kB
                             Buffers: shared hit=7
@@ -74,42 +74,42 @@ Limit  (cost=3137.51..3137.56 rows=20 width=172) (actual rows=20.00 loops=1)
                                   Filter: (provider_id = ANY ('{1}'::integer[]))
                                   Buffers: shared hit=7
   InitPlan 2
-    ->  Aggregate  (cost=2.41..2.42 rows=1 width=32) (actual rows=1.00 loops=1)
-          ->  CTE Scan on t t0  (cost=0.00..2.14 rows=107 width=32) (actual rows=274.00 loops=1)
+    ->  Aggregate  (cost=2.43..2.44 rows=1 width=32) (actual rows=1.00 loops=1)
+          ->  CTE Scan on t t0  (cost=0.00..2.16 rows=108 width=32) (actual rows=273.00 loops=1)
                 Storage: Memory  Maximum Storage: 27kB
   InitPlan 3
-    ->  Aggregate  (cost=2.41..2.42 rows=1 width=32) (actual rows=1.00 loops=1)
-          ->  CTE Scan on t t0_1  (cost=0.00..2.14 rows=107 width=32) (actual rows=274.00 loops=1)
+    ->  Aggregate  (cost=2.43..2.44 rows=1 width=32) (actual rows=1.00 loops=1)
+          ->  CTE Scan on t t0_1  (cost=0.00..2.16 rows=108 width=32) (actual rows=273.00 loops=1)
                 Storage: Memory  Maximum Storage: 27kB
   InitPlan 4
-    ->  Aggregate  (cost=2.41..2.42 rows=1 width=32) (actual rows=1.00 loops=1)
-          ->  CTE Scan on t t0_2  (cost=0.00..2.14 rows=107 width=32) (actual rows=274.00 loops=1)
+    ->  Aggregate  (cost=2.43..2.44 rows=1 width=32) (actual rows=1.00 loops=1)
+          ->  CTE Scan on t t0_2  (cost=0.00..2.16 rows=108 width=32) (actual rows=273.00 loops=1)
                 Storage: Memory  Maximum Storage: 27kB
-  ->  Sort  (cost=229.68..229.77 rows=36 width=172) (actual rows=20.00 loops=1)
+  ->  Sort  (cost=229.71..229.80 rows=36 width=172) (actual rows=20.00 loops=1)
         Sort Key: t.volume_mb DESC, s.id
-        Sort Method: top-N heapsort  Memory: 30kB
-        Buffers: shared hit=1115
-        ->  WindowAgg  (cost=221.97..228.75 rows=36 width=172) (actual rows=111.00 loops=1)
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=1105
+        ->  WindowAgg  (cost=221.99..228.78 rows=36 width=172) (actual rows=108.00 loops=1)
               Window: w1 AS ()
               Storage: Memory  Maximum Storage: 28kB
-              Buffers: shared hit=1112
-              ->  Nested Loop  (cost=0.43..227.85 rows=36 width=108) (actual rows=111.00 loops=1)
-                    Buffers: shared hit=1112
-                    ->  Nested Loop  (cost=0.28..225.21 rows=36 width=83) (actual rows=111.00 loops=1)
-                          Buffers: shared hit=1092
-                          ->  CTE Scan on t  (cost=0.00..2.41 rows=36 width=36) (actual rows=111.00 loops=1)
+              Buffers: shared hit=1102
+              ->  Nested Loop  (cost=0.43..227.88 rows=36 width=108) (actual rows=108.00 loops=1)
+                    Buffers: shared hit=1102
+                    ->  Nested Loop  (cost=0.28..225.23 rows=36 width=83) (actual rows=108.00 loops=1)
+                          Buffers: shared hit=1082
+                          ->  CTE Scan on t  (cost=0.00..2.43 rows=36 width=36) (actual rows=108.00 loops=1)
                                 Filter: (volume_mb > (InitPlan 4).col1)
-                                Rows Removed by Filter: 163
+                                Rows Removed by Filter: 165
                                 Storage: Memory  Maximum Storage: 27kB
-                                Buffers: shared hit=759
-                          ->  Index Scan using pk_subscriber on subscriber s  (cost=0.28..6.19 rows=1 width=51) (actual rows=1.00 loops=111)
+                                Buffers: shared hit=758
+                          ->  Index Scan using pk_subscriber on subscriber s  (cost=0.28..6.19 rows=1 width=51) (actual rows=1.00 loops=108)
                                 Index Cond: (id = t.subscriber_id)
-                                Index Searches: 111
-                                Buffers: shared hit=333
-                    ->  Memoize  (cost=0.15..0.16 rows=1 width=29) (actual rows=1.00 loops=111)
+                                Index Searches: 108
+                                Buffers: shared hit=324
+                    ->  Memoize  (cost=0.15..0.16 rows=1 width=29) (actual rows=1.00 loops=108)
                           Cache Key: s.subscriber_type_id
                           Cache Mode: logical
-                          Hits: 101  Misses: 10  Evictions: 0  Overflows: 0  Memory Usage: 2kB
+                          Hits: 98  Misses: 10  Evictions: 0  Overflows: 0  Memory Usage: 2kB
                           Buffers: shared hit=20
                           ->  Index Scan using pk_subscriber_type on subscriber_type st  (cost=0.14..0.15 rows=1 width=29) (actual rows=1.00 loops=10)
                                 Index Cond: (id = s.subscriber_type_id)

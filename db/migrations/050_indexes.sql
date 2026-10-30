@@ -37,7 +37,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_contract_provider_id_ip_address_active
     ON core.contract (provider_id, ip_address) WHERE closed_on IS NULL;
 
 COMMENT ON INDEX core.ix_session_contract_id_started_at IS 'Сеансы договора за период';
-COMMENT ON INDEX core.ix_session_started_at IS 'Сеансы за период (ключ будущего секционирования)';
+COMMENT ON INDEX core.ix_session_started_at IS 'Сеансы за период (ключ секционирования, D30)';
 COMMENT ON INDEX core.ix_contract_provider_id_connected_on IS 'Договоры провайдера, заключённые в периоде';
 COMMENT ON INDEX audit.ix_change_log_changed_at IS 'Журнал изменений за период';
 COMMENT ON INDEX core.ix_contract_subscriber_id_provider_id IS 'Договоры абонента; есть ли у абонента договор с провайдером (видимость абонента, D25)';

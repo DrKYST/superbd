@@ -43,8 +43,11 @@ def query(sql: str) -> list[list[str]]:
     return [line.split("\x1f") for line in res.stdout.decode("utf-8").splitlines() if line]
 
 
+DREF = re.compile(r"\s*\(D\d+(?:, D\d+)*\)|,\s*D\d+(?=\))")   # номера решений docs/decisions.md — не для ПЗ
+
+
 def cell(s: str) -> str:
-    return s.replace("|", "\\|").replace("\n", " ")
+    return DREF.sub("", s).replace("|", "\\|").replace("\n", " ")
 
 
 def tidy(expr: str) -> str:
@@ -84,7 +87,8 @@ def tables() -> list[str]:
                coalesce((SELECT string_agg(CASE k.contype WHEN 'p' THEN 'PK' WHEN 'f' THEN 'FK' ELSE 'AK' END,
                                            ', ' ORDER BY k.contype DESC)
                          FROM pg_constraint k
-                         WHERE k.conrelid = c.oid AND k.contype IN ('p', 'f', 'u') AND a.attnum = ANY (k.conkey)), ''),
+                         WHERE k.conrelid = c.oid AND k.contype IN ('p', 'f', 'u') AND a.attnum = ANY (k.conkey)
+                           AND k.conparentid = 0), ''),   -- без копий ключа по секциям
                coalesce(col_description(c.oid, a.attnum), '')
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -92,7 +96,7 @@ def tables() -> list[str]:
         JOIN pg_type ty ON ty.oid = a.atttypid
         JOIN pg_namespace tn ON tn.oid = ty.typnamespace
         LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-        WHERE c.relkind IN ('r', 'p') AND n.nspname IN {SCHEMAS}
+        WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition AND n.nspname IN {SCHEMAS}   -- секции — в 4.6
         ORDER BY 1, a.attnum""")
     by_table: dict[str, tuple[str, list]] = {}
     for t, tcomment, *rest in cols:
@@ -131,7 +135,7 @@ def indexes() -> list[str]:
         JOIN pg_class i ON i.oid = x.indexrelid
         JOIN pg_class t ON t.oid = x.indrelid
         JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE n.nspname IN {SCHEMAS}
+        WHERE n.nspname IN {SCHEMAS} AND NOT t.relispartition          -- индексы секций — копии индексов таблицы
           AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = i.oid)
         ORDER BY n.nspname, t.relname, x.indisprimary DESC, x.indisunique DESC, i.relname""")
     out = ["Таблица: Индексы, созданные явно (без индексов первичных ключей и ограничений уникальности) "
@@ -171,11 +175,12 @@ def build() -> str:
         "Домены приведены в таблице [@tab:pz-domains], справочники и служебные таблицы — в таблице "
         "[@tab:pz-other-tables], структура основных таблиц — в таблицах [@tab:pz-provider] – [@tab:pz-session] "
         "(таблицы «Договор» — на рисунке [@fig:create-contract]), "
-        "индексы — в таблице [@tab:pz-indexes], последовательности — в таблице [@tab:pz-sequences]. Таблицы "
+        "индексы — в таблице [@tab:pz-indexes]. Таблицы "
         "сформированы по фактической схеме базы данных (комментарии COMMENT ON и системный каталог) сценарием "
         "`tools/schema2md.py`; тексты сценариев создания основных объектов — в приложении Б.",
         "",
-        *domains(), *tables(), "", *indexes(), "", *sequences(),
+        # последовательности — абзацем в тексте 4.2 (явная одна, остальные — identity): таблица не нужна (объём ПЗ)
+        *domains(), *tables(), "", *indexes(), *(sequences() if "--sequences" in sys.argv else []),
     ]
     return "\n".join(parts)
 

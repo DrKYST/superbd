@@ -24,42 +24,42 @@ SELECT title, subscribers, contracts, contracts_active FROM api.v_subscriber_typ
  Индивидуальный предприниматель |          20 |        23 |               22
 
 -- План выполнения (auto_explain, ANALYZE, BUFFERS)
-duration: 17.263 ms  plan:
+duration: 55.520 ms  plan:
 Query Text: SELECT title, subscribers, contracts, contracts_active FROM api.v_subscriber_type_totals;
 Subquery Scan on v_subscriber_type_totals  (cost=2193.58..2193.90 rows=25 width=56) (actual rows=14.00 loops=1)
-  Buffers: shared hit=1464
+  Buffers: shared hit=1466
   ->  Sort  (cost=2193.58..2193.65 rows=25 width=106) (actual rows=14.00 loops=1)
         Sort Key: (row_number() OVER w1)
         Sort Method: quicksort  Memory: 26kB
-        Buffers: shared hit=1464
+        Buffers: shared hit=1466
         InitPlan 1
           ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
                 Buffers: shared hit=32
         ->  WindowAgg  (cost=2191.77..2192.74 rows=25 width=106) (actual rows=14.00 loops=1)
               Window: w1 AS (ORDER BY (GROUPING(st.is_legal)), st.is_legal, (GROUPING(st.name)), (min(st.id)) ROWS UNBOUNDED PRECEDING)
               Storage: Memory  Maximum Storage: 17kB
-              Buffers: shared hit=1461
+              Buffers: shared hit=1463
               ->  Sort  (cost=2191.74..2191.81 rows=25 width=62) (actual rows=14.00 loops=1)
                     Sort Key: (GROUPING(st.is_legal)) DESC, st.is_legal DESC, (GROUPING(st.name)) DESC, (min(st.id))
                     Sort Method: quicksort  Memory: 26kB
-                    Buffers: shared hit=1461
+                    Buffers: shared hit=1463
                     ->  GroupAggregate  (cost=2167.08..2191.16 rows=25 width=62) (actual rows=14.00 loops=1)
                           Group Key: st.is_legal, st.name
                           Group Key: st.is_legal
                           Group Key: ()
-                          Buffers: shared hit=1450
+                          Buffers: shared hit=1452
                           ->  Sort  (cost=2167.08..2170.46 rows=1355 width=42) (actual rows=409.00 loops=1)
                                 Sort Key: st.is_legal, st.name
                                 Sort Method: quicksort  Memory: 48kB
-                                Buffers: shared hit=1450
+                                Buffers: shared hit=1452
                                 ->  Hash Left Join  (cost=699.62..2096.59 rows=1355 width=42) (actual rows=409.00 loops=1)
                                       Hash Cond: (s0.id = c.subscriber_id)
-                                      Buffers: shared hit=1447
+                                      Buffers: shared hit=1449
                                       ->  Hash Join  (cost=1.51..1376.34 rows=858 width=34) (actual rows=289.00 loops=1)
                                             Hash Cond: (s0.subscriber_type_id = st.id)
-                                            Buffers: shared hit=1197
+                                            Buffers: shared hit=1199
                                             ->  Append  (cost=0.26..1333.27 rows=15602 width=6) (actual rows=289.00 loops=1)
-                                                  Buffers: shared hit=1196
+                                                  Buffers: shared hit=1198
                                                   ->  Result  (cost=0.26..224.26 rows=8000 width=6) (actual rows=0.00 loops=1)
                                                         One-Time Filter: (NOT ((InitPlan 2).col1 IS DISTINCT FROM 'grp_chief'::text))
                                                         Buffers: shared hit=447
@@ -69,21 +69,21 @@ Subquery Scan on v_subscriber_type_totals  (cost=2193.58..2193.90 rows=25 width=
                                                         ->  Seq Scan on subscriber s0  (cost=0.26..224.26 rows=8000 width=6) (never executed)
                                                   ->  Result  (cost=324.52..1031.00 rows=7602 width=6) (actual rows=289.00 loops=1)
                                                         One-Time Filter: ((InitPlan 3).col1 IS DISTINCT FROM 'grp_chief'::text)
-                                                        Buffers: shared hit=749
+                                                        Buffers: shared hit=751
                                                         InitPlan 3
                                                           ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
                                                                 Buffers: shared hit=30
                                                         InitPlan 4
                                                           ->  Result  (cost=0.00..0.26 rows=1 width=32) (actual rows=1.00 loops=1)
-                                                                Buffers: shared hit=357
+                                                                Buffers: shared hit=359
                                                         ->  Hash Right Semi Join  (cost=324.52..1031.00 rows=7602 width=6) (actual rows=289.00 loops=1)
                                                               Hash Cond: (v.subscriber_id = s0_1.id)
-                                                              Buffers: shared hit=719
+                                                              Buffers: shared hit=721
                                                               ->  Append  (cost=0.00..548.07 rows=12004 width=4) (actual rows=409.00 loops=1)
-                                                                    Buffers: shared hit=575
+                                                                    Buffers: shared hit=577
                                                                     ->  Seq Scan on contract_p1 v_1  (cost=0.00..16.20 rows=409 width=4) (actual rows=409.00 loops=1)
                                                                           Filter: (provider_id = ANY ((InitPlan 4).col1))
-                                                                          Buffers: shared hit=364
+                                                                          Buffers: shared hit=366
                                                                     ->  Seq Scan on contract_p2 v_2  (cost=0.00..15.53 rows=379 width=4) (actual rows=0.00 loops=1)
                                                                           Filter: (provider_id = ANY ((InitPlan 4).col1))
                                                                           Rows Removed by Filter: 379
