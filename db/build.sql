@@ -28,6 +28,7 @@ DROP SCHEMA IF EXISTS api, audit, sec, core, ref CASCADE;
 \ir migrations/070_api_admin.sql
 \ir migrations/075_password_reset.sql
 \ir migrations/080_triggers.sql
+\ir migrations/085_contract_card.sql
 
 \echo '  данные'
 -- Заполнение базы — не действия пользователей: на время загрузки журнал изменений отключён (080).

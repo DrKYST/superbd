@@ -58,13 +58,138 @@ END $$;
 COMMENT ON FUNCTION api.subscriber_find_exact(text, text) IS
     'Абонент реестра с точно таким наименованием (без учёта регистра) и телефоном (по цифрам); has_own_contract — есть ли договор со своим провайдером (D25)';
 
--- Новый договор своего провайдера.
+-- Абонент реестра по точному наименованию (без учёта регистра) и телефону (по цифрам) — во всём реестре, а не только
+-- среди абонентов провайдера (D25): договор с абонентом другого провайдера присоединяет его, а не создаёт дубль.
+-- Строка блокируется FOR KEY SHARE до конца транзакции (как внешний ключ договора): абонента не удалят и не изменят
+-- его ключ, пока договор не записан. Внутренняя: вызывается из sec.contract_insert.
+CREATE OR REPLACE FUNCTION sec.subscriber_find(p_name text, p_phone text)
+RETURNS TABLE (id integer, address text)
+LANGUAGE sql VOLATILE
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT s.id, s.address::text FROM core.subscriber s
+    WHERE lower(s.name) = lower(btrim(p_name))
+      AND translate(s.phone, '+ ()-', '') = translate(btrim(p_phone), '+ ()-', '')
+    FOR KEY SHARE
+$$;
+COMMENT ON FUNCTION sec.subscriber_find(text, text) IS
+    'Абонент реестра (код, физический адрес) с таким наименованием (без учёта регистра) и телефоном (по цифрам); блокирует строку FOR KEY SHARE (D25)';
+
+-- Обслуживают ли абонента провайдеры, кроме p_provider_id: тогда его сведения в реестре меняет только администратор
+-- приложения (D25). Какие это провайдеры — не раскрывается. SECURITY DEFINER: вызывается и из представлений api
+-- от имени пользователя, у которого нет прав на таблицы (как sec.scope_data, 057).
+CREATE OR REPLACE FUNCTION sec.subscriber_shared(p_subscriber_id integer, p_provider_id integer)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+    SELECT EXISTS (SELECT 1 FROM core.contract c
+                   WHERE c.subscriber_id = p_subscriber_id AND c.provider_id IS DISTINCT FROM p_provider_id)
+$$;
+COMMENT ON FUNCTION sec.subscriber_shared(integer, integer) IS
+    'Есть ли у абонента договоры с другими провайдерами (общий абонент, D25)';
+
+-- Новый договор провайдера p_provider_id — общая часть api.contract_create и представления api.v_contract_card (085).
 --   p_subscriber_id задан  — второй и следующие договоры абонента, которого провайдер уже обслуживает;
 --   p_subscriber_id = NULL — абонент ищется в реестре по наименованию и телефону: найден — договор заключается
 --                            с ним (сведения реестра не меняются), нет — абонент создаётся из p_name … p_phone.
--- Адрес подключения по умолчанию — p_address (адрес, введённый в форме), иначе адрес абонента из реестра.
+-- Номер договора — введённый вручную или по умолчанию «Д-<год подключения>-<6 цифр>» из последовательности (D12):
+-- значение последовательности берётся, только если номер не задан. Адрес подключения по умолчанию — p_address
+-- (адрес, введённый в форме), иначе адрес абонента из реестра. Повтор номера и занятый IP различаются по имени
+-- уникального индекса секции (в его имени — колонки индекса).
+CREATE OR REPLACE FUNCTION sec.contract_insert(
+    p_provider_id integer,
+    p_subscriber_id integer,
+    p_name text,
+    p_subscriber_type_id integer,
+    p_city_id integer,
+    p_address text,
+    p_phone text,
+    p_contract_no text,
+    p_connected_on date,
+    p_connection_fee numeric,
+    p_price_per_mb numeric,
+    p_ip_address text,
+    p_connection_address text,
+    p_contact_phone text,
+    p_contact_person text,
+    p_note text)
+RETURNS TABLE (contract_id integer, contract_no text, subscriber_id integer, subscriber_created boolean)
+LANGUAGE plpgsql VOLATILE
+SET search_path = pg_catalog, pg_temp
+SET TimeZone = 'Europe/Moscow'
+AS $$
+DECLARE
+    v_sub integer;
+    v_sub_address text;
+    v_created boolean := false;
+    v_ip inet := sec.to_inet(p_ip_address);
+    v_connected date := coalesce(p_connected_on, current_date);
+    v_no text := nullif(btrim(p_contract_no), '');
+    v_index text;
+BEGIN
+    IF v_ip IS NULL THEN
+        RAISE EXCEPTION 'Не указан IP-адрес' USING ERRCODE = '22023';
+    END IF;
+
+    IF p_subscriber_id IS NOT NULL THEN
+        -- только свой абонент: чужого по коду не выбрать
+        SELECT s.id, s.address INTO v_sub, v_sub_address
+        FROM core.subscriber s
+        WHERE s.id = p_subscriber_id
+          AND EXISTS (SELECT 1 FROM core.contract c WHERE c.subscriber_id = s.id AND c.provider_id = p_provider_id)
+        FOR KEY SHARE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Абонент не найден среди абонентов провайдера' USING ERRCODE = '22023';
+        END IF;
+    ELSE
+        IF coalesce(btrim(p_name), '') = '' OR coalesce(btrim(p_phone), '') = '' THEN
+            RAISE EXCEPTION 'Укажите наименование и телефон абонента' USING ERRCODE = '22023';
+        END IF;
+        SELECT f.id, f.address INTO v_sub, v_sub_address FROM sec.subscriber_find(p_name, p_phone) f;
+        IF v_sub IS NULL THEN
+            BEGIN
+                INSERT INTO core.subscriber (name, city_id, subscriber_type_id, address, phone)
+                VALUES (btrim(p_name), p_city_id, p_subscriber_type_id, p_address, btrim(p_phone))
+                RETURNING core.subscriber.id, core.subscriber.address INTO v_sub, v_sub_address;
+                v_created := true;
+            EXCEPTION WHEN unique_violation THEN
+                -- тот же абонент создан параллельно другим оператором — берём его
+                SELECT f.id, f.address INTO v_sub, v_sub_address FROM sec.subscriber_find(p_name, p_phone) f;
+            WHEN not_null_violation THEN
+                RAISE EXCEPTION 'Для нового абонента укажите тип, город и адрес' USING ERRCODE = '22023';
+            END;
+        END IF;
+    END IF;
+
+    IF v_no IS NULL THEN
+        v_no := 'Д-' || to_char(v_connected, 'YYYY') || '-' || lpad(nextval('core.contract_no_seq')::text, 6, '0');
+    END IF;
+    BEGIN
+        RETURN QUERY
+        INSERT INTO core.contract AS c (provider_id, contract_no, subscriber_id, connected_on, connection_fee, price_per_mb,
+                                        ip_address, connection_address, contact_phone, contact_person, note)
+        VALUES (p_provider_id, v_no, v_sub, v_connected, p_connection_fee, p_price_per_mb, v_ip,
+                coalesce(nullif(btrim(p_connection_address), ''), nullif(btrim(p_address), ''), v_sub_address),
+                nullif(btrim(p_contact_phone), ''), nullif(btrim(p_contact_person), ''), nullif(btrim(p_note), ''))
+        RETURNING c.id, c.contract_no::text, c.subscriber_id, v_created;
+    EXCEPTION WHEN unique_violation THEN
+        GET STACKED DIAGNOSTICS v_index = CONSTRAINT_NAME;
+        IF strpos(v_index, 'contract_no') > 0 THEN
+            RAISE EXCEPTION 'Договор с номером % у провайдера уже есть', v_no USING ERRCODE = '23505';
+        END IF;
+        RAISE EXCEPTION 'IP-адрес % уже занят действующим договором провайдера', host(v_ip) USING ERRCODE = '23505';
+    END;
+END $$;
+COMMENT ON FUNCTION sec.contract_insert(integer, integer, text, integer, integer, text, text, text, date, numeric, numeric,
+                                        text, text, text, text, text) IS
+    'Новый договор провайдера с абонентом: своим (по коду) или из реестра по наименованию и телефону, иначе новым (D25); номер — введённый или из последовательности (D12)';
+
+-- Новый договор своего провайдера (правила — sec.contract_insert); номер договора по умолчанию — из последовательности.
 DROP FUNCTION IF EXISTS api.contract_create(integer, text, integer, integer, text, text, numeric, numeric, text,
                                             text, text, text, date, text);
+DROP FUNCTION IF EXISTS api.contract_create(integer, text, integer, integer, text, text, numeric, numeric, text,
+                                            text, text, text, date, text, text);
 CREATE OR REPLACE FUNCTION api.contract_create(
     p_subscriber_id integer,
     p_name text,
@@ -79,7 +204,8 @@ CREATE OR REPLACE FUNCTION api.contract_create(
     p_contact_phone text DEFAULT NULL,
     p_contact_person text DEFAULT NULL,
     p_connected_on date DEFAULT NULL,
-    p_note text DEFAULT NULL)
+    p_note text DEFAULT NULL,
+    p_contract_no text DEFAULT NULL)
 RETURNS TABLE (contract_id integer, contract_no text, subscriber_id integer, subscriber_created boolean)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
@@ -87,70 +213,18 @@ SET TimeZone = 'Europe/Moscow'
 AS $$
 DECLARE
     v_provider integer := sec.current_provider_id();
-    v_sub integer;
-    v_sub_address text;
-    v_created boolean := false;
-    v_ip inet := sec.to_inet(p_ip_address);
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_operator']);
     IF v_provider IS NULL THEN
         RAISE EXCEPTION 'Учётная запись не привязана к провайдеру' USING ERRCODE = '42501';
     END IF;
-    IF v_ip IS NULL THEN
-        RAISE EXCEPTION 'Не указан IP-адрес' USING ERRCODE = '22023';
-    END IF;
-
-    IF p_subscriber_id IS NOT NULL THEN
-        -- только свой абонент: чужого по коду не выбрать
-        SELECT s.id, s.address INTO v_sub, v_sub_address
-        FROM core.subscriber s
-        WHERE s.id = p_subscriber_id
-          AND EXISTS (SELECT 1 FROM core.contract c WHERE c.subscriber_id = s.id AND c.provider_id = v_provider)
-        FOR KEY SHARE;
-        IF NOT FOUND THEN
-            RAISE EXCEPTION 'Абонент не найден среди абонентов провайдера' USING ERRCODE = '22023';
-        END IF;
-    ELSE
-        IF coalesce(btrim(p_name), '') = '' OR coalesce(btrim(p_phone), '') = '' THEN
-            RAISE EXCEPTION 'Укажите наименование и телефон абонента' USING ERRCODE = '22023';
-        END IF;
-        SELECT s.id, s.address INTO v_sub, v_sub_address
-        FROM core.subscriber s
-        WHERE lower(s.name) = lower(btrim(p_name))
-          AND translate(s.phone, '+ ()-', '') = translate(btrim(p_phone), '+ ()-', '')
-        FOR KEY SHARE;
-        IF NOT FOUND THEN
-            BEGIN
-                INSERT INTO core.subscriber (name, city_id, subscriber_type_id, address, phone)
-                VALUES (btrim(p_name), p_city_id, p_subscriber_type_id, p_address, btrim(p_phone))
-                RETURNING id, address INTO v_sub, v_sub_address;
-                v_created := true;
-            EXCEPTION WHEN unique_violation THEN
-                -- тот же абонент создан параллельно другим оператором — берём его
-                SELECT s.id, s.address INTO STRICT v_sub, v_sub_address
-                FROM core.subscriber s
-                WHERE lower(s.name) = lower(btrim(p_name))
-                  AND translate(s.phone, '+ ()-', '') = translate(btrim(p_phone), '+ ()-', '');
-            WHEN not_null_violation THEN
-                RAISE EXCEPTION 'Для нового абонента укажите тип, город и адрес' USING ERRCODE = '22023';
-            END;
-        END IF;
-    END IF;
-
-    BEGIN
-        RETURN QUERY
-        INSERT INTO core.contract AS c (provider_id, subscriber_id, connected_on, connection_fee, price_per_mb,
-                                        ip_address, connection_address, contact_phone, contact_person, note)
-        VALUES (v_provider, v_sub, coalesce(p_connected_on, current_date), p_connection_fee, p_price_per_mb, v_ip,
-                coalesce(nullif(btrim(p_connection_address), ''), nullif(btrim(p_address), ''), v_sub_address),
-                nullif(btrim(p_contact_phone), ''), nullif(btrim(p_contact_person), ''), nullif(btrim(p_note), ''))
-        RETURNING c.id, c.contract_no::text, c.subscriber_id, v_created;
-    EXCEPTION WHEN unique_violation THEN
-        RAISE EXCEPTION 'IP-адрес % уже занят действующим договором провайдера', host(v_ip) USING ERRCODE = '23505';
-    END;
+    RETURN QUERY
+    SELECT * FROM sec.contract_insert(v_provider, p_subscriber_id, p_name, p_subscriber_type_id, p_city_id, p_address,
+                                      p_phone, p_contract_no, p_connected_on, p_connection_fee, p_price_per_mb,
+                                      p_ip_address, p_connection_address, p_contact_phone, p_contact_person, p_note);
 END $$;
 COMMENT ON FUNCTION api.contract_create(integer, text, integer, integer, text, text, numeric, numeric, text,
-                                        text, text, text, date, text) IS
+                                        text, text, text, date, text, text) IS
     'Новый договор своего провайдера с абонентом: своим (по коду) или из реестра по наименованию и телефону; если такого нет — абонент создаётся (D25)';
 
 -- Изменить сведения реестра. Строка абонента блокируется FOR UPDATE до проверки «нет чужих договоров»: договор
@@ -169,6 +243,26 @@ RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
+BEGIN
+    RETURN sec.subscriber_save(p_id, p_row_version, p_name, p_subscriber_type_id, p_city_id, p_address, p_phone);
+END $$;
+COMMENT ON FUNCTION api.subscriber_update(integer, integer, text, integer, integer, text, text) IS
+    'Изменение сведений абонента в реестре: администратор — любого, оператор — своего, если абонента не обслуживают другие провайдеры (D25); возвращает новую версию строки';
+
+-- Общая часть api.subscriber_update и представления api.v_contract_card (085): проверка прав и версии
+-- (sec.check_subscriber_edit — первой строкой), запись, новая версия строки.
+CREATE OR REPLACE FUNCTION sec.subscriber_save(
+    p_id integer,
+    p_row_version integer,
+    p_name text,
+    p_subscriber_type_id integer,
+    p_city_id integer,
+    p_address text,
+    p_phone text)
+RETURNS integer
+LANGUAGE plpgsql VOLATILE
+SET search_path = pg_catalog, pg_temp
+AS $$
 DECLARE
     v_version integer;
 BEGIN
@@ -182,8 +276,8 @@ BEGIN
 EXCEPTION WHEN unique_violation THEN
     RAISE EXCEPTION 'В реестре уже есть абонент с таким наименованием и телефоном' USING ERRCODE = '23505';
 END $$;
-COMMENT ON FUNCTION api.subscriber_update(integer, integer, text, integer, integer, text, text) IS
-    'Изменение сведений абонента в реестре: администратор — любого, оператор — своего, если абонента не обслуживают другие провайдеры (D25); возвращает новую версию строки';
+COMMENT ON FUNCTION sec.subscriber_save(integer, integer, text, integer, integer, text, text) IS
+    'Запись сведений абонента в реестр после проверки прав и версии строки (D25); возвращает новую версию';
 
 DROP FUNCTION IF EXISTS api.subscriber_delete(integer, integer);
 CREATE OR REPLACE FUNCTION api.subscriber_delete(p_id integer, p_row_version integer)
@@ -222,8 +316,7 @@ BEGIN
           AND NOT EXISTS (SELECT 1 FROM core.contract c WHERE c.subscriber_id = p_id AND c.provider_id = v_provider) THEN
         RAISE EXCEPTION 'Абонент не найден' USING ERRCODE = '22023';
     END IF;
-    IF v_group = 'grp_operator'
-       AND EXISTS (SELECT 1 FROM core.contract c WHERE c.subscriber_id = p_id AND c.provider_id <> v_provider) THEN
+    IF v_group = 'grp_operator' AND sec.subscriber_shared(p_id, v_provider) THEN
         IF p_delete THEN
             RAISE EXCEPTION 'Абонента обслуживают и другие провайдеры: удалить его нельзя' USING ERRCODE = '42501';
         END IF;
@@ -284,14 +377,18 @@ END $$;
 COMMENT ON FUNCTION api.contract_update(integer, integer, text, text, text, numeric, text, date, text) IS
     'Изменение договора своего провайдера (адрес подключения, контакты, цена 1 Мб, IP, расторжение, комментарий); возвращает новую версию строки';
 
-REVOKE ALL ON FUNCTION sec.to_inet(text), sec.check_subscriber_edit(integer, integer, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION sec.to_inet(text), sec.check_subscriber_edit(integer, integer, boolean),
+    sec.subscriber_find(text, text), sec.subscriber_shared(integer, integer),
+    sec.contract_insert(integer, integer, text, integer, integer, text, text, text, date, numeric, numeric,
+                        text, text, text, text, text),
+    sec.subscriber_save(integer, integer, text, integer, integer, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.subscriber_find_exact(text, text),
-    api.contract_create(integer, text, integer, integer, text, text, numeric, numeric, text, text, text, text, date, text),
+    api.contract_create(integer, text, integer, integer, text, text, numeric, numeric, text, text, text, text, date, text, text),
     api.subscriber_update(integer, integer, text, integer, integer, text, text),
     api.subscriber_delete(integer, integer),
     api.contract_update(integer, integer, text, text, text, numeric, text, date, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION api.subscriber_find_exact(text, text),
-    api.contract_create(integer, text, integer, integer, text, text, numeric, numeric, text, text, text, text, date, text),
+    api.contract_create(integer, text, integer, integer, text, text, numeric, numeric, text, text, text, text, date, text, text),
     api.subscriber_update(integer, integer, text, integer, integer, text, text),
     api.subscriber_delete(integer, integer),
     api.contract_update(integer, integer, text, text, text, numeric, text, date, text) TO grp_operator;

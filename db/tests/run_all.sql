@@ -37,6 +37,9 @@ SET TimeZone = 'Europe/Moscow';
 \echo '== 100 триггеры (T7, T8, журнал изменений)'
 \ir 100_triggers.sql
 
+\echo '== 110 модифицируемое представление «абонент + договор»'
+\ir 110_contract_card.sql
+
 \echo '== итог'
 DO $$
 DECLARE
