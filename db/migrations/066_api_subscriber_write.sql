@@ -239,6 +239,9 @@ COMMENT ON FUNCTION sec.check_subscriber_edit(integer, integer, boolean) IS
     'Проверка перед изменением или удалением абонента: администратор меняет любого; оператор — своего, если нет договоров других провайдеров; версия строки совпадает (D25)';
 
 -- Изменить договор своего провайдера: данные подключения, цену, IP, расторжение, комментарий.
+-- Версия строки (D8): в row_version записывается прочитанная клиентом версия — триггер trg_contract_bu_check (080)
+-- сравнивает её с версией в базе (конфликт — 40001) и ставит следующую; одновременное изменение тоже отклоняется:
+-- второе ждёт блокировку строки, затем триггер видит новую версию.
 DROP FUNCTION IF EXISTS api.contract_update(integer, integer, text, text, text, numeric, text, date, text);
 CREATE OR REPLACE FUNCTION api.contract_update(
     p_id integer,
@@ -257,19 +260,9 @@ AS $$
 DECLARE
     v_provider integer := sec.current_provider_id();
     v_ip inet := sec.to_inet(p_ip_address);
-    v_old integer;
     v_version integer;
 BEGIN
     PERFORM sec.require_group(ARRAY['grp_operator']);
-    SELECT c.row_version INTO v_old FROM core.contract c
-    WHERE c.id = p_id AND c.provider_id = v_provider
-    FOR UPDATE;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Договор не найден среди договоров провайдера' USING ERRCODE = '22023';
-    END IF;
-    IF v_old IS DISTINCT FROM p_row_version THEN
-        RAISE EXCEPTION 'Договор изменён другим пользователем — обновите карточку' USING ERRCODE = '40001';
-    END IF;
     UPDATE core.contract
     SET connection_address = p_connection_address,
         contact_phone = nullif(btrim(p_contact_phone), ''),
@@ -278,9 +271,12 @@ BEGIN
         ip_address = v_ip,
         closed_on = p_closed_on,
         note = nullif(btrim(p_note), ''),
-        row_version = row_version + 1
-    WHERE id = p_id
+        row_version = p_row_version                -- проверку и следующую версию даёт триггер (D8)
+    WHERE id = p_id AND provider_id = v_provider
     RETURNING row_version INTO v_version;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Договор не найден среди договоров провайдера' USING ERRCODE = '22023';
+    END IF;
     RETURN v_version;
 EXCEPTION WHEN unique_violation THEN
     RAISE EXCEPTION 'IP-адрес % уже занят действующим договором провайдера', host(v_ip) USING ERRCODE = '23505';

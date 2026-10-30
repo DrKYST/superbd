@@ -34,6 +34,9 @@ SET TimeZone = 'Europe/Moscow';
 \echo '== 090 запросы ТЗ курсового проекта 17–23 (D31)'
 \ir 090_queries_coursework.sql
 
+\echo '== 100 триггеры (T7, T8, журнал изменений)'
+\ir 100_triggers.sql
+
 \echo '== итог'
 DO $$
 DECLARE

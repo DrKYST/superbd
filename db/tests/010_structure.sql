@@ -126,12 +126,23 @@ BEGIN
        OR s.started_at > now();
     PERFORM pg_temp.check('3.3 нет сеансов вне периода договора и в будущем', v_bad = 0, v_bad || ' шт.');
 
+    -- Снимок (D3): сеансы, записанные до изменения цены договора или скидки тарифа (видно по журналу изменений),
+    -- хранят прежние скидку и стоимость — они не нарушение.
+    WITH bad AS MATERIALIZED (
+        SELECT c.id AS contract_id, t.id AS tariff_id
+        FROM core.session s
+        JOIN core.contract c ON c.id = s.contract_id
+        JOIN ref.tariff t ON t.id = s.tariff_id
+        WHERE s.discount_pct <> t.discount_pct
+           OR s.cost <> round(s.volume_mb * c.price_per_mb * (1 - s.discount_pct / 100), 2))
     SELECT count(*) INTO v_bad
-    FROM core.session s
-    JOIN core.contract c ON c.id = s.contract_id
-    JOIN ref.tariff t ON t.id = s.tariff_id
-    WHERE s.discount_pct <> t.discount_pct
-       OR s.cost <> round(s.volume_mb * c.price_per_mb * (1 - s.discount_pct / 100), 2);
+    FROM bad b
+    WHERE NOT EXISTS (SELECT 1 FROM audit.change_log l
+                      WHERE l.operation = 'UPDATE'
+                        AND (l.table_name = 'core.contract' AND l.row_pk = b.contract_id::text
+                             AND l.old_row -> 'price_per_mb' IS DISTINCT FROM l.new_row -> 'price_per_mb'
+                             OR l.table_name = 'ref.tariff' AND l.row_pk = b.tariff_id::text
+                                AND l.old_row -> 'discount_pct' IS DISTINCT FROM l.new_row -> 'discount_pct'));
     PERFORM pg_temp.check('3.4 скидка сеанса равна скидке тарифа, стоимость — по формуле D3', v_bad = 0, v_bad || ' шт.');
 
     SELECT count(*) INTO v_bad
@@ -249,10 +260,11 @@ BEGIN
     END;
     PERFORM pg_temp.check('5.3 удаление тарифа, на который ссылаются сеансы, отклоняется', v_blocked);
 
+    -- провайдер с договорами защищён внешним ключом (RESTRICT), с недавними сеансами — ещё раньше триггером (080, тест 15.7)
     v_blocked := false;
     BEGIN
         DELETE FROM core.provider WHERE id = (SELECT provider_id FROM core.contract LIMIT 1);
-    EXCEPTION WHEN restrict_violation OR foreign_key_violation THEN
+    EXCEPTION WHEN restrict_violation OR foreign_key_violation OR raise_exception THEN
         v_blocked := true;
     END;
     PERFORM pg_temp.check('5.4 удаление провайдера с договорами отклоняется', v_blocked);

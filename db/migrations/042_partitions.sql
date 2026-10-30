@@ -28,7 +28,11 @@ COMMENT ON TABLE core.contract_default IS
 --      identity родителя. Если присоединить год вместе с готовыми кварталами, PostgreSQL 18.3 передаёт identity только
 --      таблице года, а не кварталам, и отсоединить год (DETACH) потом нельзя — проверено при реализации ЛР 8;
 --   4) запомненные сеансы вставляются обратно через core.session (с прежними кодами) и попадают в свои кварталы.
--- Индексы и внешние ключи родителя появляются в секциях сами. Границы — полночь по Москве (D19), как периоды отчётов.
+-- Перенос — служебная операция, а не изменение данных: на время удаления и обратной вставки включённые триггеры сеансов
+-- (подбор тарифа и стоимость — 080, журнал изменений) отключаются, иначе снимок скидки и стоимости (D3) был бы посчитан
+-- заново, а в журнал попали бы удаление и добавление каждого сеанса. Внешние ключи (системные триггеры) действуют.
+-- Отключение — после создания кварталов ещё раз: новые секции получают триггеры родителя включёнными.
+-- Индексы, внешние ключи и триггеры родителя появляются в секциях сами. Границы — полночь по Москве (D19), как периоды отчётов.
 CREATE OR REPLACE FUNCTION sec.session_partitions_ensure(p_from date, p_to date)
 RETURNS TABLE (partition_name text, range_from date, range_to date, moved_rows bigint)
 LANGUAGE plpgsql SECURITY DEFINER
@@ -42,6 +46,8 @@ DECLARE
     v_from date;
     v_to date;
     v_rows core.session_default[];
+    v_triggers text[];
+    v_trg text;
 BEGIN
     IF p_from IS NULL OR p_to IS NULL OR p_to < p_from THEN
         RAISE EXCEPTION 'Неверный период для секций сеансов' USING ERRCODE = '22023';
@@ -54,8 +60,16 @@ BEGIN
         SELECT array_agg(d) INTO v_rows
         FROM core.session_default d
         WHERE d.started_at >= v_from::timestamptz AND d.started_at < v_to::timestamptz;
-        DELETE FROM core.session_default d
-        WHERE d.started_at >= v_from::timestamptz AND d.started_at < v_to::timestamptz;
+        IF v_rows IS NOT NULL THEN
+            SELECT array_agg(t.tgname::text) INTO v_triggers
+            FROM pg_catalog.pg_trigger t
+            WHERE t.tgrelid = 'core.session'::regclass AND NOT t.tgisinternal AND t.tgenabled <> 'D';
+            FOREACH v_trg IN ARRAY coalesce(v_triggers, '{}') LOOP
+                EXECUTE format('ALTER TABLE core.session DISABLE TRIGGER %I', v_trg);
+            END LOOP;
+            DELETE FROM core.session_default d
+            WHERE d.started_at >= v_from::timestamptz AND d.started_at < v_to::timestamptz;
+        END IF;
         EXECUTE format('CREATE TABLE core.%I (LIKE core.session INCLUDING DEFAULTS INCLUDING CONSTRAINTS) '
                        'PARTITION BY RANGE (started_at)', v_name);
         EXECUTE format('ALTER TABLE core.session ATTACH PARTITION core.%I FOR VALUES FROM (%L) TO (%L)',
@@ -70,8 +84,16 @@ BEGIN
             EXECUTE format('COMMENT ON TABLE core.%I IS %L', v_name || '_q' || v_q,
                            format('Сеанс связи — секция %s квартала %s года', v_q, v_year));
         END LOOP;
-        INSERT INTO core.session OVERRIDING SYSTEM VALUE
-        SELECT (r).* FROM unnest(v_rows) AS r;
+        IF v_rows IS NOT NULL THEN
+            FOREACH v_trg IN ARRAY coalesce(v_triggers, '{}') LOOP
+                EXECUTE format('ALTER TABLE core.session DISABLE TRIGGER %I', v_trg);    -- и в новых кварталах
+            END LOOP;
+            INSERT INTO core.session OVERRIDING SYSTEM VALUE
+            SELECT (r).* FROM unnest(v_rows) AS r;
+            FOREACH v_trg IN ARRAY coalesce(v_triggers, '{}') LOOP
+                EXECUTE format('ALTER TABLE core.session ENABLE TRIGGER %I', v_trg);
+            END LOOP;
+        END IF;
         moved_rows := coalesce(cardinality(v_rows), 0);
         partition_name := 'core.' || v_name;
         range_from := v_from;

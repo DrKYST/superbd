@@ -27,12 +27,18 @@ DROP SCHEMA IF EXISTS api, audit, sec, core, ref CASCADE;
 \ir migrations/066_api_subscriber_write.sql
 \ir migrations/070_api_admin.sql
 \ir migrations/075_password_reset.sql
+\ir migrations/080_triggers.sql
 
 \echo '  данные'
+-- Заполнение базы — не действия пользователей: на время загрузки журнал изменений отключён (080).
+DO $$ BEGIN PERFORM sec.audit_set_enabled(false); END $$;
 \ir seed/010_ref.sql
 \ir seed/020_generate.sql
 \ir seed/030_demo_users.sql
 \ir seed/040_for_queries.sql
+DO $$ BEGIN PERFORM sec.audit_set_enabled(true); END $$;
+-- Работа демо-пользователей через api — уже с журналом изменений.
+\ir seed/050_demo_changes.sql
 
 ANALYZE;
 \echo 'Готово'

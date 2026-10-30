@@ -185,7 +185,8 @@ BEGIN
 END $$;
 
 -- 10.16 Экраны администратора БД: журнал (операция словом, число изменённых полей, «поле — было — стало»),
--- таблицы и подключения с total_count. Записи журнала — временные (откат транзакции).
+-- таблицы и подключения с total_count. Записи журнала — временные (откат транзакции); добавлены от имени postgres,
+-- журнал выбирается по нему: записи демо-пользователей (seed 050) и триггеров в проверку не попадают.
 BEGIN;
 INSERT INTO audit.change_log (table_name, operation, row_pk, old_row, new_row) VALUES
     ('core.contract', 'UPDATE', '1', '{"closed_on": null, "note": null, "row_version": 3}',
@@ -195,7 +196,7 @@ SET SESSION AUTHORIZATION dba_main;
 SELECT count(*) AS j_rows,
        string_agg(operation_title || ':' || coalesce(changed_fields::text, '-'), ',' ORDER BY id) AS j_ops,
        max(id) FILTER (WHERE operation = 'UPDATE') AS j_upd
-FROM api.q_change_log(current_date, current_date) \gset
+FROM api.q_change_log(current_date, current_date, p_db_user => 'postgres') \gset
 SELECT count(*) AS j_fields, count(*) FILTER (WHERE changed) AS j_changed,
        string_agg(field || '=' || coalesce(old_value, '∅') || '→' || coalesce(new_value, '∅'), '; ' ORDER BY field) AS j_diff
 FROM api.q_change_log_fields(:j_upd) \gset

@@ -121,20 +121,34 @@ SELECT pg_temp.check('13.6 регистрация провайдера созд�
 
 BEGIN;
 -- Сеанс года, секции которого нет (через два года), попадает в секцию по умолчанию; функция создаёт год и переносит его.
+-- Сеанс «из будущего» отклонил бы триггер сеанса (080), поэтому на время вставки он отключён: так моделируется сеанс,
+-- попавший в секцию по умолчанию, когда секцию его года не создали вовремя. Стоимость 0,1 не по формуле — перенос должен
+-- её сохранить (снимок D3: триггеры на время переноса отключены) и не писать в журнал.
 SELECT extract(year FROM current_date)::int + 2 AS t_year \gset
+SELECT count(*) AS t_log_before FROM audit.change_log \gset
+ALTER TABLE core.session DISABLE TRIGGER trg_session_bi_tariff_cost;
 INSERT INTO core.session (started_at, contract_id, provider_id, tariff_id, volume_mb, discount_pct, cost)
 SELECT make_timestamptz(:t_year, 2, 10, 12, 0, 0, 'Europe/Moscow'), c.id, c.provider_id, 1, 1, 0, 0.1
 FROM core.contract c ORDER BY c.id LIMIT 1
 RETURNING tableoid::regclass::text AS t_before \gset
+ALTER TABLE core.session ENABLE TRIGGER trg_session_bi_tariff_cost;
+SELECT count(*) AS t_log_mid FROM audit.change_log \gset
 SELECT count(*) AS t_created, coalesce(sum(moved_rows), 0) AS t_moved
 FROM sec.session_partitions_ensure(make_date(:t_year, 1, 1), make_date(:t_year, 12, 31)) \gset
-SELECT tableoid::regclass::text AS t_after FROM core.session WHERE started_at = make_timestamptz(:t_year, 2, 10, 12, 0, 0, 'Europe/Moscow') \gset
+SELECT tableoid::regclass::text AS t_after, cost AS t_cost
+FROM core.session WHERE started_at = make_timestamptz(:t_year, 2, 10, 12, 0, 0, 'Europe/Moscow') \gset
 SELECT count(*) AS t_again FROM sec.session_partitions_ensure(date '2024-01-01', make_date(:t_year, 12, 31)) \gset
+SELECT count(*) AS t_log_after FROM audit.change_log \gset
+SELECT count(*) FILTER (WHERE t.tgenabled = 'D') AS t_disabled
+FROM pg_catalog.pg_trigger t
+WHERE t.tgrelid IN (SELECT r.relid FROM pg_catalog.pg_partition_tree('core.session') r) AND NOT t.tgisinternal \gset
 ROLLBACK;
-SELECT pg_temp.check('13.7 сеанс года без секции — в секции по умолчанию; создание секции года переносит его в квартал; повторный вызов ничего не создаёт',
+SELECT pg_temp.check('13.7 сеанс года без секции — в секции по умолчанию; создание секции года переносит его в квартал (снимок стоимости и журнал не меняются, триггеры снова включены); повторный вызов ничего не создаёт',
     :'t_before' = 'core.session_default' AND :t_created = 1 AND :t_moved = 1
-    AND :'t_after' = 'core.session_' || :t_year || '_q1' AND :t_again = 0,
-    format('до: %s; создано %s, перенесено %s; после: %s; повторно создано %s', :'t_before', :t_created, :t_moved, :'t_after', :t_again));
+    AND :'t_after' = 'core.session_' || :t_year || '_q1' AND :t_again = 0
+    AND :t_cost = 0.1 AND :t_log_after = :t_log_mid AND :t_disabled = 0,
+    format('до: %s; создано %s, перенесено %s; после: %s, стоимость %s; записей журнала при переносе +%s; отключённых триггеров %s; повторно создано %s',
+           :'t_before', :t_created, :t_moved, :'t_after', :t_cost, :t_log_after - :t_log_mid, :t_disabled, :t_again));
 
 -- ============================================================================ 13.8–13.9 администратор БД
 SET SESSION AUTHORIZATION op_donnet;

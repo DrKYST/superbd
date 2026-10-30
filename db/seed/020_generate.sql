@@ -2,9 +2,13 @@
 -- сеансов — 500 000 для ЛР 8, D30).
 -- Результат повторяем: setseed(0.16) перед генерацией. Повторный запуск пересоздаёт данные
 -- (TRUNCATE ... RESTART IDENTITY сбрасывает и последовательность номеров договоров).
--- Данные соблюдают ограничения, которые позже будут проверять триггеры (labs/lab03/spec.md, §5):
--- сеанс в периоде действия договора и не в будущем, тариф по окну времени и типу дня,
--- подключение не раньше года основания провайдера, стоимость сеанса по формуле D3.
+-- Данные соблюдают ограничения предметной области (labs/lab03/spec.md, §5): подключение не раньше года основания
+-- провайдера, сеанс в периоде действия договора и не в будущем. Сеансы проходят через триггер trg_session_bi_tariff_cost
+-- (080): он проверяет время сеанса, подбирает тариф по окну времени и типу дня и считает скидку и стоимость (D2, D3) —
+-- генератор задаёт только «ручные» тарифы (решение студента 30.10: триггер работает и при генерации, сборка ≈ 74 с
+-- вместо 48 с, зато расчёт в одном месте, D32).
+-- Журнал изменений на время загрузки отключает db/build.sql (sec.audit_set_enabled, 080); при отдельном запуске
+-- этого файла — вызвать sec.audit_set_enabled(false) перед ним и sec.audit_set_enabled(true) после.
 
 TRUNCATE core.session, core.contract, core.subscriber, sec.app_user, core.provider RESTART IDENTITY;
 
@@ -193,10 +197,10 @@ ORDER BY c.connected_on, c.n;
 -- месяце растёт вместе с числом действующих договоров (до D30 договор выбирался равновероятно, и сеансы молодых
 -- договоров сгущались в последних месяцах). Округление — методом наибольших остатков: в сумме ровно :sessions.
 -- Время сеанса — случайное в периоде действия договора (верхняя граница — начало текущего дня, не now(): в пределах
--- суток результат повторяем). Тариф — по окну времени и типу дня (D2/D13, окно через полночь при
--- time_from > time_to); изредка «ручные»: образовательный для учебных заведений, акционный.
+-- суток результат повторяем). Тариф задаётся только «ручной» (изредка): образовательный для учебных заведений,
+-- акционный; иначе — NULL, и тариф по окну времени и типу дня подбирает триггер (D2/D13).
 -- «Праздничный» и «Служебный» не используются — тарифы без сеансов нужны для внешних соединений (ЛР 5).
--- Скидка и стоимость — снимок на момент сеанса (D3), считаются здесь: триггера ещё нет.
+-- Скидку и стоимость — снимок на момент сеанса (D3) — считает триггер.
 -- Провайдер сеанса — провайдер договора (составной внешний ключ, D30).
 \if :{?sessions}
 \else
@@ -233,20 +237,11 @@ WITH c AS (
                         THEN (SELECT id FROM ref.tariff WHERE name = 'Образовательный')
                     WHEN s.manual_roll > 0.97
                         THEN (SELECT id FROM ref.tariff WHERE name = 'Акционный')
-                    ELSE (SELECT tr.id FROM ref.tariff tr
-                          WHERE tr.time_from IS NOT NULL
-                            AND tr.is_weekend = (extract(isodow FROM s.started_at) IN (6, 7))
-                            AND CASE WHEN tr.time_from < tr.time_to
-                                     THEN s.started_at::time >= tr.time_from AND s.started_at::time < tr.time_to
-                                     ELSE s.started_at::time >= tr.time_from OR s.started_at::time < tr.time_to
-                                END)
-               END AS tariff_id
+               END AS tariff_id                -- NULL — тариф по времени подберёт триггер
         FROM s)
-INSERT INTO core.session (started_at, contract_id, provider_id, tariff_id, volume_mb, discount_pct, cost)
-SELECT t.started_at, t.contract_id, t.provider_id, t.tariff_id, t.volume_mb, tr.discount_pct,
-       round(t.volume_mb * t.price_per_mb * (1 - tr.discount_pct / 100), 2)
+INSERT INTO core.session (started_at, contract_id, provider_id, tariff_id, volume_mb)
+SELECT t.started_at, t.contract_id, t.provider_id, t.tariff_id, t.volume_mb
 FROM t
-JOIN ref.tariff tr ON tr.id = t.tariff_id
 ORDER BY t.started_at;
 
 RESET TimeZone;
