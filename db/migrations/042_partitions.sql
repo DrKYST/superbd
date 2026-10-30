@@ -32,6 +32,9 @@ COMMENT ON TABLE core.contract_default IS
 -- (подбор тарифа и стоимость — 080, журнал изменений) отключаются, иначе снимок скидки и стоимости (D3) был бы посчитан
 -- заново, а в журнал попали бы удаление и добавление каждого сеанса. Внешние ключи (системные триггеры) действуют.
 -- Отключение — после создания кварталов ещё раз: новые секции получают триггеры родителя включёнными.
+-- Сеансы читаются, удаляются и вставляются через core.session (секции года ещё нет — строки года только в секции по
+-- умолчанию): на самих секциях защита на уровне строк без политик (090), строки видны только через родителя — по
+-- политике обслуживания (администратор БД, суперпользователь). Новым секциям защита включается сразу.
 -- Индексы, внешние ключи и триггеры родителя появляются в секциях сами. Границы — полночь по Москве (D19), как периоды отчётов.
 CREATE OR REPLACE FUNCTION sec.session_partitions_ensure(p_from date, p_to date)
 RETURNS TABLE (partition_name text, range_from date, range_to date, moved_rows bigint)
@@ -45,7 +48,7 @@ DECLARE
     v_name text;
     v_from date;
     v_to date;
-    v_rows core.session_default[];
+    v_rows core.session[];
     v_triggers text[];
     v_trg text;
 BEGIN
@@ -58,7 +61,7 @@ BEGIN
         v_from := make_date(v_year, 1, 1);
         v_to := make_date(v_year + 1, 1, 1);
         SELECT array_agg(d) INTO v_rows
-        FROM core.session_default d
+        FROM core.session d
         WHERE d.started_at >= v_from::timestamptz AND d.started_at < v_to::timestamptz;
         IF v_rows IS NOT NULL THEN
             SELECT array_agg(t.tgname::text) INTO v_triggers
@@ -67,7 +70,7 @@ BEGIN
             FOREACH v_trg IN ARRAY coalesce(v_triggers, '{}') LOOP
                 EXECUTE format('ALTER TABLE core.session DISABLE TRIGGER %I', v_trg);
             END LOOP;
-            DELETE FROM core.session_default d
+            DELETE FROM core.session d
             WHERE d.started_at >= v_from::timestamptz AND d.started_at < v_to::timestamptz;
         END IF;
         EXECUTE format('CREATE TABLE core.%I (LIKE core.session INCLUDING DEFAULTS INCLUDING CONSTRAINTS) '
@@ -76,6 +79,7 @@ BEGIN
                        v_name, v_from::timestamptz, v_to::timestamptz);
         EXECUTE format('COMMENT ON TABLE core.%I IS %L', v_name,
                        format('Сеанс связи — секция %s года (разделена по кварталам)', v_year));
+        EXECUTE format('ALTER TABLE core.%I ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY', v_name);
         FOR v_q IN 1 .. 4 LOOP
             EXECUTE format('CREATE TABLE core.%I PARTITION OF core.%I FOR VALUES FROM (%L) TO (%L)',
                            v_name || '_q' || v_q, v_name,
@@ -83,6 +87,7 @@ BEGIN
                            (make_date(v_year, 3 * v_q - 2, 1) + interval '3 months')::timestamptz);
             EXECUTE format('COMMENT ON TABLE core.%I IS %L', v_name || '_q' || v_q,
                            format('Сеанс связи — секция %s квартала %s года', v_q, v_year));
+            EXECUTE format('ALTER TABLE core.%I ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY', v_name || '_q' || v_q);
         END LOOP;
         IF v_rows IS NOT NULL THEN
             FOREACH v_trg IN ARRAY coalesce(v_triggers, '{}') LOOP
@@ -107,6 +112,8 @@ COMMENT ON FUNCTION sec.session_partitions_ensure(date, date) IS
 -- ============================================================================ договоры: секция провайдера
 -- Если договоры провайдера уже лежат в секции по умолчанию, секцию не создать: строки пришлось бы перенести удалением
 -- и вставкой, а удаление договора каскадом удаляет его сеансы. Такой случай решается вручную — ошибка с объяснением.
+-- Секцию по умолчанию проверяет sec.contract_default_has (090): договоры администратору, который регистрирует
+-- провайдера, не видны (защита на уровне строк). Новой секции защита включается сразу.
 CREATE OR REPLACE FUNCTION sec.contract_partition_ensure(p_provider_id integer)
 RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER
@@ -118,7 +125,7 @@ BEGIN
     IF to_regclass('core.' || v_name) IS NOT NULL THEN
         RETURN NULL;                                   -- секция уже есть
     END IF;
-    IF EXISTS (SELECT 1 FROM core.contract_default d WHERE d.provider_id = p_provider_id) THEN
+    IF sec.contract_default_has(p_provider_id) THEN
         RAISE EXCEPTION 'Договоры провайдера с кодом % находятся в секции по умолчанию — перенесите их до создания секции',
             p_provider_id USING ERRCODE = 'P0001';
     END IF;
@@ -126,6 +133,7 @@ BEGIN
     EXECUTE format('COMMENT ON TABLE core.%I IS %L', v_name,
                    format('Договор — секция провайдера «%s»',
                           (SELECT p.name FROM core.provider p WHERE p.id = p_provider_id)));
+    EXECUTE format('ALTER TABLE core.%I ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY', v_name);
     RETURN 'core.' || v_name;
 END $$;
 COMMENT ON FUNCTION sec.contract_partition_ensure(integer) IS

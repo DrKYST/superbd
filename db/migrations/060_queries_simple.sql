@@ -59,7 +59,8 @@ COMMENT ON VIEW api.v_providers IS
 -- без договоров (администратор ведёт сведения общих абонентов, но договоров и сеансов не видит).
 -- can_edit — может ли текущий пользователь менять сведения реестра: администратор — любого абонента; оператор — только
 -- если абонента не обслуживает никакой другой провайдер (иначе правка задела бы чужие договоры). Какие провайдеры —
--- не раскрывается.
+-- не раскрывается: договоры других провайдеров оператору не видны (защита на уровне строк, 090), поэтому проверяет
+-- функция sec.subscriber_shared, которой виден весь реестр.
 -- Видимость записана двумя ветвями UNION ALL с условиями-константами (InitPlan, вычисляется один раз): выполняется
 -- только ветвь своей роли. Условие «видит всех OR EXISTS (договор)» в одном WHERE планировщик не превращает в
 -- полусоединение и проверяет подзапрос для каждой из 8 000 строк (D24); IN в ветви оператора становится полусоединением:
@@ -77,9 +78,7 @@ SELECT s.id,
        s.row_version,
        (SELECT sec.current_group()) IS NOT DISTINCT FROM 'grp_admin'
            OR (SELECT sec.current_group()) IS NOT DISTINCT FROM 'grp_operator'
-              AND NOT EXISTS (SELECT 1 FROM core.contract x
-                              WHERE x.subscriber_id = s.id
-                                AND x.provider_id IS DISTINCT FROM (SELECT sec.current_provider_id())) AS can_edit
+              AND NOT sec.subscriber_shared(s.id, (SELECT sec.current_provider_id())) AS can_edit
 -- разграничение доступа: аналитик и администратор — весь реестр; остальные — абоненты, с которыми у их провайдера есть договор
 FROM (SELECT s0.* FROM core.subscriber s0
       WHERE (SELECT sec.current_group()) IN ('grp_chief', 'grp_admin')

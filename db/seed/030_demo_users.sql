@@ -32,6 +32,10 @@ BEGIN
             EXECUTE format('GRANT %I TO %I', u.grp, u.login);
         END IF;
         EXECUTE format('COMMENT ON ROLE %I IS %L', u.login, u.note);
+        -- Администратор БД делает резервные копии (pg_dump, D26): таблицы с защитой на уровне строк (FORCE, 090) и их
+        -- секции он читает целиком, только если обходит политики. Атрибут BYPASSRLS выдаёт только суперпользователь —
+        -- как и саму учётную запись администратора БД; у остальных его нет.
+        EXECUTE format('ALTER ROLE %I %s', u.login, CASE WHEN u.grp = 'grp_dba' THEN 'BYPASSRLS' ELSE 'NOBYPASSRLS' END);
         -- Право управлять учётной записью (блокировка входа, сброс пароля) у функций api, принадлежащих app_owner;
         -- роли, созданные через api.user_create, получают его автоматически (CREATEROLE, PostgreSQL 16+).
         -- Администраторами БД приложение не управляет (их создаёт postgres), а выдать такое право и нельзя:

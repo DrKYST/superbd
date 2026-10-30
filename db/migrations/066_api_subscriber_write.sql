@@ -60,24 +60,25 @@ COMMENT ON FUNCTION api.subscriber_find_exact(text, text) IS
 
 -- Абонент реестра по точному наименованию (без учёта регистра) и телефону (по цифрам) — во всём реестре, а не только
 -- среди абонентов провайдера (D25): договор с абонентом другого провайдера присоединяет его, а не создаёт дубль.
--- Строка блокируется FOR KEY SHARE до конца транзакции (как внешний ключ договора): абонента не удалят и не изменят
--- его ключ, пока договор не записан. Внутренняя: вызывается из sec.contract_insert.
+-- Абонент другого провайдера оператору не виден (защита на уровне строк), поэтому владелец функции — app_rls_bypass
+-- (090). Строку абонента до конца транзакции блокирует внешний ключ вставляемого договора. Внутренняя: вызывается из
+-- sec.contract_insert.
 CREATE OR REPLACE FUNCTION sec.subscriber_find(p_name text, p_phone text)
 RETURNS TABLE (id integer, address text)
-LANGUAGE sql VOLATILE
+LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
     SELECT s.id, s.address::text FROM core.subscriber s
     WHERE lower(s.name) = lower(btrim(p_name))
       AND translate(s.phone, '+ ()-', '') = translate(btrim(p_phone), '+ ()-', '')
-    FOR KEY SHARE
 $$;
 COMMENT ON FUNCTION sec.subscriber_find(text, text) IS
-    'Абонент реестра (код, физический адрес) с таким наименованием (без учёта регистра) и телефоном (по цифрам); блокирует строку FOR KEY SHARE (D25)';
+    'Абонент реестра (код, физический адрес) с таким наименованием (без учёта регистра) и телефоном (по цифрам) во всём реестре (D25)';
 
 -- Обслуживают ли абонента провайдеры, кроме p_provider_id: тогда его сведения в реестре меняет только администратор
 -- приложения (D25). Какие это провайдеры — не раскрывается. SECURITY DEFINER: вызывается и из представлений api
--- от имени пользователя, у которого нет прав на таблицы (как sec.scope_data, 057).
+-- от имени пользователя, у которого нет прав на таблицы (как sec.scope_data, 057); владелец — app_rls_bypass (090):
+-- договоры других провайдеров пользователю не видны.
 CREATE OR REPLACE FUNCTION sec.subscriber_shared(p_subscriber_id integer, p_provider_id integer)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -148,17 +149,18 @@ BEGIN
         END IF;
         SELECT f.id, f.address INTO v_sub, v_sub_address FROM sec.subscriber_find(p_name, p_phone) f;
         IF v_sub IS NULL THEN
+            -- без RETURNING: новый абонент, пока у него нет договора, оператору не виден (защита на уровне строк, 090),
+            -- а RETURNING требует видимости строки; код — повторным поиском
             BEGIN
                 INSERT INTO core.subscriber (name, city_id, subscriber_type_id, address, phone)
-                VALUES (btrim(p_name), p_city_id, p_subscriber_type_id, p_address, btrim(p_phone))
-                RETURNING core.subscriber.id, core.subscriber.address INTO v_sub, v_sub_address;
+                VALUES (btrim(p_name), p_city_id, p_subscriber_type_id, p_address, btrim(p_phone));
                 v_created := true;
             EXCEPTION WHEN unique_violation THEN
-                -- тот же абонент создан параллельно другим оператором — берём его
-                SELECT f.id, f.address INTO v_sub, v_sub_address FROM sec.subscriber_find(p_name, p_phone) f;
+                NULL;                    -- тот же абонент создан параллельно другим оператором — берём его
             WHEN not_null_violation THEN
                 RAISE EXCEPTION 'Для нового абонента укажите тип, город и адрес' USING ERRCODE = '22023';
             END;
+            SELECT f.id, f.address INTO v_sub, v_sub_address FROM sec.subscriber_find(p_name, p_phone) f;
         END IF;
     END IF;
 

@@ -10,6 +10,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_owner') THEN
         CREATE ROLE app_owner NOLOGIN NOSUPERUSER NOCREATEDB CREATEROLE NOINHERIT;
     END IF;
+    -- Владелец немногих функций, которым по назначению нужны строки всех провайдеров (поиск в общем реестре абонентов,
+    -- «общий ли абонент», счётчики администратора, проверка удаления провайдера): защита на уровне строк (090) на него
+    -- не действует, доступ ограничивает условие самой функции. Входа нет, создать такую роль может только суперпользователь.
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_rls_bypass') THEN
+        CREATE ROLE app_rls_bypass NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT BYPASSRLS;
+    END IF;
     FOREACH g IN ARRAY ARRAY['grp_admin', 'grp_dba', 'grp_operator', 'grp_manager', 'grp_chief'] LOOP
         IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = g) THEN
             EXECUTE format('CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT', g);
@@ -17,6 +23,7 @@ BEGIN
     END LOOP;
 END $$;
 
+COMMENT ON ROLE app_rls_bypass IS 'Владелец функций, которым нужны строки всех провайдеров (BYPASSRLS); входа в систему не имеет';
 COMMENT ON ROLE grp_admin    IS 'Группа «Администратор приложения»: пользователи (операторы, руководители, аналитики), справочники, провайдеры';
 COMMENT ON ROLE grp_dba      IS 'Группа «Администратор БД»: обслуживание базы, резервные копии, журнал изменений, администраторы приложения';
 COMMENT ON ROLE grp_operator IS 'Группа «Оператор»: абоненты, договоры и сеансы своего провайдера';
